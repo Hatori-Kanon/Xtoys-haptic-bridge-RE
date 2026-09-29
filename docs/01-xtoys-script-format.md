@@ -243,12 +243,18 @@ Script 的全局 JavaScript 运行在 **XToys JS-Interpreter** 中，约束：
 3. `customCode`：初始化运行时。
 4. `updateJob`：**启动**调度器 Job。
 
-**Final Actions**（实测顺序）：
+**Final Actions**（**本项目采用的顺序**，与旧参考实现的顺序不同）：
 
-1. `customCode`：全局归零函数。
-2. `updateJob`：**停止**调度器 Job。
-3. 对每个已配置 Block：`setVolume percentVolume=0`（E-Stim 再加 `setFrequency=0`）。
-4. `updateJob stop`：停止全部输出 Job。
+1. `updateJob stop`：停止调度器 Job（不再有新的计算进来）。
+2. 对每个已配置 Block：`setVolume percentVolume=0`（`rampTime=0`）—— **字面量归零，不依赖 JS**。
+3. `updateJob stop`：停止全部输出 Job。
+4. `customCode`：调用 JS 清理函数（包在 `safeCall` 里）。
+
+> ⚠️ **顺序是有意这么排的（2026-09-30 修正）。** 旧参考实现把 JS 归零放在第 1 条，
+> 但本节末尾又说"JS 抛错时 Final Actions 是唯一保障" —— 这自相矛盾：
+> 如果某个 Action 抛错会让 XToys 中止后续 Action，那么先跑 JS 就等于把唯一的
+> 硬件硬保障押在"JS 不抛错"上。所以**字面量归零必须排在 `customCode` 之前**。
+> 生成器 `tools/build-xtoys-script.mjs` 里有对应自检，顺序被写错时会拒绝产出 JSON。
 
 **这些显式 UI 归零 Action 是强制项。** JS 也会归零变量，但当 JS 抛错、运行时未初始化或 Job 刷新失败时，Final Actions 是唯一的硬件停止保障。它们只写"当前输出 = 0"，**不修改设备最大强度或最大旋转速度**。
 
@@ -266,6 +272,9 @@ Script 的全局 JavaScript 运行在 **XToys JS-Interpreter** 中，约束：
 ✅ **已实测确认**：顶层结构、`customFunctions` 为字符串、上述四种 channel 类型、`updateVariable`/`updateComponent`/`updateJob`/`customCode` 形状、`setVolume`/`setFrequency`/`setMode`/`setDirection`、`{变量名}` 占位符、`requiredExpression`、timer + `goTo` 自循环、`trigger-payload` 魔法值、`setVariable`/`getVariable`/`callAction` 宿主 API、ES5 约束。
 
 ⚠️ **推断，需在 XToys UI 复核**：`rampTime` 单位为秒；`percentVolume`/`frequencyPercent` 为相对设备上限的 0–100 百分比；`updateJob` 是否接受除 start/stop/goTo 之外的动作；`setFrequency` 的 `format` 其他取值；Webhook 载荷大小上限。
+
+✅ **已实测确认（2026-09-30，本地联调）**：**Webhook 端点对会被接收端整体拒绝的载荷也返回 HTTP 200。**
+因此 HTTP 状态码**不能**用来判断命令是否被接受 —— 只能看 Script 日志或诊断变量。见 `docs/06` §0.1。
 
 ❌ **未验证**：真实设备行为、JS-Interpreter 的实际执行速度与调度抖动、导出 JSON 与导入 JSON 是否存在字段差异（旧文档要求每次测试记录差异，一直是 `待填写`）。
 

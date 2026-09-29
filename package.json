@@ -1,0 +1,16 @@
+{
+  "name": "xtoys-haptic-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "把游戏事件通过 Webhook 转发给 XToys 驱动实体设备的接收端运行时（阶段 0）",
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build-xtoys-script.mjs",
+    "test": "node tools/test-bridge-logic.mjs",
+    "contract": "node tools/check-script-contract.mjs",
+    "verify": "npm run build && npm run test && npm run contract"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

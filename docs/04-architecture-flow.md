@@ -149,11 +149,19 @@ sequenceDiagram
 | 触发 | 做什么 | 对应实现 |
 | --- | --- | --- |
 | 收到 `stop_all` | 清空全部基线与事件（**保留每个 source 的基线序号栅栏**）→ 立即写零并推给输出 Job | `xthbExecute` 的 `stop_all` 分支 |
-| 用户手动停 Script | `finalActions`：JS 归零函数 → 停调度 Job → **显式 UI 归零每个 Block 的音量** → 停所有输出 Job | `finalActions` |
-| JS 抛错 / 运行时未初始化 | 上面的**显式 UI 归零 Action 仍然执行** —— 这是唯一的硬件停止保障 | 语法 §7 |
+| 用户手动停 Script | `finalActions`：停调度 Job → **显式 UI 归零每个 Block 的音量** → 停所有输出 Job → 最后跑 JS 清理 | `finalActions` |
+| JS 抛错 / 运行时未初始化 | 上面的**显式 UI 归零 Action 仍然执行** —— 它排在 `customCode` **之前**，所以不依赖 JS 是否成功 | 语法 §7 |
 
 **这三条是并列的**，不是二选一：JS 侧归零负责变量与状态，Final Actions 的 UI Action
 负责在 JS 已经坏掉时仍然把硬件写到零。
+
+> ⚠️ **顺序很重要（2026-09-30 修正）：字面量归零必须排在 `customCode` 之前。**
+> 早期版本把 `xtoysBridgeStopAll()` 放在 Final Actions 第 1 条，等于把唯一的硬件硬保障
+> 押在"JS 不抛错"上。现在生成器有自检强制这个顺序。
+>
+> ⚠️ **`stop_all` 是唯一在 `handle` 里直接推输出的路径**（安全例外）：
+> 它必须在同一个调用内把归零推出去，不能等下一个 tick。
+> 宿主 API 调用全部包在 try/catch 里，所以某一个通道失败不会中断其余通道的归零。
 
 > ⚠️ **归零 = 归零音量，不包括频率。** `frequency` 是 E-Stim 的调制设置而非刺激量，
 > 缺省语义是"保持设备当前值"。所以 Initial / Final Actions 都**不**写频率，

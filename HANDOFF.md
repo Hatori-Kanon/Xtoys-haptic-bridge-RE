@@ -78,12 +78,14 @@ Script 的全局 JavaScript 运行在 JS-Interpreter 中。**禁止** `let` / `c
 - **绝不**调用任何设置最大强度/最大旋转速度的接口。
 - Initial Actions 与 Final Actions 必须**显式**把所有已绑定 Block 归零。
   Final Actions 是 JS 抛错、运行时未初始化、Job 刷新失败时**唯一**的硬件停止保障。
+  ⚠️ **因此字面量归零必须排在 Final Actions 里的 `customCode` 之前** ——
+  否则这条保障就押在"JS 不抛错"上了（2026-09-30 修正，见 `docs/01` §7）。
 - 用户手动启停 Script；配置改动遵循 XToys 原生 stop → edit → start 流程。
 
 ### 3.3 生命周期
 
 Script 是手动启停的。启动 = Initial Actions（归零 → 写配置 → 初始化 JS → 启动调度 Job）；
-停止 = Final Actions（JS 归零 → 停调度 Job → 显式 UI 归零所有 Block → 停所有输出 Job）。
+停止 = Final Actions（停调度 Job → **显式 UI 归零所有 Block** → 停所有输出 Job → 最后跑 JS 清理）。
 
 ### 3.4 现实边界：同步返回 ≠ 设备确认
 

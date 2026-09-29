@@ -32,13 +32,19 @@ Webhook POST 到 `https://webhook.xtoys.app/<Webhook ID>`，`Content-Type: appli
 | --- | --- | --- |
 | `protocolVersion` | number | 固定 `1` |
 | `command` | string | `play` / `update` / `stop` / `set_baseline` / `stop_all`（`test` 见 §5） |
-| `source` | string | 必填、非空、稳定标识；建议 ≤ 64 字符 |
-| `eventId` | string | `play`/`update` 必填；`stop` 可选；建议 ≤ 64 字符 |
-| `sequence` | number | 同一 `source + eventId` 的版本号，必须**严格递增**；`set_baseline` 也必填 |
+| `source` | string | 必填、非空、稳定标识；建议 ≤ 64 字符。**不得含控制字符** |
+| `eventId` | string | `play`/`update` 必填；`stop` 可选；建议 ≤ 64 字符。**不得含控制字符** |
+| `sequence` | number | 同一 `source + eventId` 的版本号，必须**严格递增**；`set_baseline` 也必填；**`test` 不需要** |
 | `targets` | array | 效果目标，见 §3 |
 
 **身份模型**：`source + eventId` 标识一个有限事件。不同 `source` 可用相同 `eventId` 而互不影响。
 同身份只有 `sequence` 严格更大才替换整个事件；重复或更小的序号被忽略。
+
+> `source` / `eventId` **禁止控制字符**（U+0000–U+001F 与 U+007F）。接收端用 `\u0000`
+> 作为内部键的分隔符，若 ID 本身含控制字符，两个逻辑上不同的事件会撞成同一个键。
+>
+> 事件**到期后其序号栅栏仍保留一段时间**（接收端保留 10 分钟）：webhook 重试/重复投递
+> 带旧 `sequence` 时必须被拒绝，否则一次重复投递就变成一次重复刺激。
 
 **基线**按 `source` 单独保存，是**完整快照**：新的 `set_baseline` 替换旧快照，遗漏的部位被清除。
 `stop_all` 清除所有来源的当前状态，但**每个 source 的基线序号栅栏要保留** —— 停机后同一 source 的下一条
@@ -166,12 +172,22 @@ Webhook POST 到 `https://webhook.xtoys.app/<Webhook ID>`，`Content-Type: appli
 
 ### `test`（可选）— 只校验不驱动硬件
 
+不需要 `sequence`（它不改变任何状态，没有"新旧"可言）：
+
 ```json
 {
   "action": "xtoys_game_bridge",
   "payload": "{\"protocolVersion\":1,\"command\":\"test\",\"source\":\"my-game\",\"targets\":[{\"part\":\"clitoris\",\"intensity\":50}]}"
 }
 ```
+
+### 空 `targets` 的区分
+
+| 命令 | `targets: []` |
+| --- | --- |
+| `set_baseline` | **合法** —— 清空该来源的基线快照 |
+| `play` / `update` | **拒绝**（`missing_targets`）—— 没有目标就没有正 `durationMs` |
+| `stop` | **拒绝**（`missing_stop_selector`）—— 空选择器什么都没指 |
 
 ---
 

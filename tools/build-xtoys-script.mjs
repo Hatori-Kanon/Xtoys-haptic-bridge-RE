@@ -8,18 +8,25 @@
  *
  * 输出：
  *   examples/xtoys-minimal-3path.json   ← 导入 XToys 用
- *   examples/xthb-customFunctions.js    ← 与 JSON 内嵌内容完全一致的独立副本，
- *                                         便于在编辑器里阅读/审查（两者必须同步）
+ *   examples/xthb-customFunctions.js    ← 与 JSON 内嵌内容完全一致的独立副本
  *
- * 设计边界（HANDOFF.md §3.2）：
- *   - Initial/Final Actions 里的显式归零是硬件停止的强制项，由本脚本生成，
- *     不要手工从 JSON 里删。
- *   - 生成的 Action 只写"当前输出值"，不含任何最大强度/最大旋转速度设置项。
+ * 命名与映射规则全部来自 tools/xtoys-naming.mjs（单一真源，见该文件头注释）。
+ * 依据：docs/03-protocol-mapping.md、docs/04-architecture-flow.md
+ *
+ * 安全边界（HANDOFF.md §3.2）：
+ *   - 归零 = 归零音量。绝不写频率（频率是设置项，缺省=不动，docs/03 §4.5）。
+ *   - 不含任何设置最大强度 / 最大旋转速度的 Action。
  */
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import {
+  ALL_METRICS, FREQUENCY_SENTINEL, KNOWN_PART_NAMES, METRIC_TYPE,
+  SCHEDULER_INTERVAL_SECONDS, SCHEDULER_JOB,
+  buildBlocks, buildBridgeConfig,
+} from "./xtoys-naming.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
@@ -28,76 +35,29 @@ const RUNTIME_SRC = join(ROOT, "src", "xtoys-bridge.js");
 const OUT_JSON = join(ROOT, "examples", "xtoys-minimal-3path.json");
 const OUT_JS = join(ROOT, "examples", "xthb-customFunctions.js");
 
-/* ---------------------------------------------------------------- 通道定义 */
+const BLOCKS = buildBlocks();
+const BRIDGE_CONFIG = buildBridgeConfig();
 
-const CHANNELS = {
-  "webhook-a": { name: "", type: "webhook", outbound: false, hideWebhookInfo: false },
-  "part-estim-a": { name: "E-Stim", type: "part-estim" },
-  "part-vibrator-a": { name: "Vibrator", type: "part-vibrator" },
-  "part-rotator-a": { name: "Rotator", type: "part-rotator" },
-};
+/* ==================================================================
+ * 通道定义
+ * ================================================================== */
 
-/* 3 条输出路径：estim / vibrator / rotator。见 HANDOFF.md §7.1。 */
-const PATHS = [
-  {
-    channel: "estim",
-    channelId: "part-estim-a",
-    outputJob: "xthb-output-estim",
-    valueVar: "xthb-estim-value",
-    rampVar: "xthb-estim-ramp-seconds",
-    frequencyVar: "xthb-estim-frequency",
-  },
-  {
-    channel: "vibrator",
-    channelId: "part-vibrator-a",
-    outputJob: "xthb-output-vibrator",
-    valueVar: "xthb-vibrator-value",
-    rampVar: "xthb-vibrator-ramp-seconds",
-  },
-  {
-    channel: "rotator",
-    channelId: "part-rotator-a",
-    outputJob: "xthb-output-rotator",
-    valueVar: "xthb-rotator-value",
-    rampVar: "xthb-rotator-ramp-seconds",
-    directionVar: "xthb-rotator-direction-code",
-  },
-];
+function buildChannels() {
+  const channels = {
+    "webhook-a": { name: "", type: "webhook", outbound: false, hideWebhookInfo: false },
+  };
+  for (const b of BLOCKS) {
+    channels[b.channelId] = { name: b.uiName, type: METRIC_TYPE[b.metric] };
+  }
+  return channels;
+}
 
-const SCHEDULER_JOB = "xthb-scheduler";
-const SCHEDULER_INTERVAL_SECONDS = "0.1";
-
-/* 逻辑部位白名单，与 docs/02-webhook-protocol.md §4 的叶子部位一致。 */
-const PARTS = [
-  "mouth", "breast", "nipple", "armpit", "clitoris", "vulva",
-  "vagina", "urethra", "anus", "butt", "penis", "prostate",
-];
-
-/* 运行时读的配置对象。改映射规则时优先改这里，而不是改运行时源码。 */
-const BRIDGE_CONFIG = {
-  protocolVersion: 1,
-  parts: PARTS,
-  channels: {
-    estim: { intensity: "part-estim-a", frequency: "part-estim-a" },
-    vibrator: { intensity: "part-vibrator-a" },
-    rotator: { volume: "part-rotator-a", direction: "part-rotator-a" },
-  },
-  /*
-   * 阶段 0 临时规则：所有部位的强度意图广播给 estim 与 vibrator 两个通道；
-   * 旋转通道只接受显式 rotateSpeed。正式 part -> 通道 映射留到下一轮协议讨论。
-   * 想给某条通道限定时，加 "parts": ["clitoris", "anus"] 即可，运行时支持。
-   */
-  routing: { mode: "broadcast-intensity" },
-};
-
-/* ---------------------------------------------------------------- Action 助手 */
+/* ==================================================================
+ * Action 助手
+ * ================================================================== */
 
 function customCode(code, variables = []) {
   return { type: "customCode", code, resultVar: "result", variables, storeResult: false };
-}
-
-function callBridge(code) {
-  return customCode(code);
 }
 
 function updateVariable(variable, value) {
@@ -116,57 +76,64 @@ function stopJob(job) {
   return { type: "updateJob", job, action: "stop" };
 }
 
-/* 一个 Block 的"归零"动作组。E-Stim 额外归零频率并回到 standard 模式。 */
-function zeroBlockActions(path) {
-  const actions = [];
-  if (path.frequencyVar) {
-    actions.push(updateComponent("setFrequency", path.channelId, {
-      format: "relative",
-      frequencyPercent: "0",
-    }));
-    actions.push(updateComponent("setMode", path.channelId, { mode: "standard" }));
-  }
-  actions.push(updateComponent("setVolume", path.channelId, {
-    rampTime: 0,
-    percentVolume: "0",
-  }));
-  return actions;
+/*
+ * 一个 Block 的"归零"动作组：只归零音量。
+ * 频率是 E-Stim 的调制设置而非刺激量，缺省语义是"保持设备当前值"，
+ * 所以 Initial / Final Actions 都【不写频率】（docs/03 §4.5）。
+ * setMode 同属设置项，本阶段不作为归零的一部分（待确认，docs/07 §4.2）。
+ */
+function zeroBlockActions(block) {
+  return [
+    updateComponent("setVolume", block.channelId, { rampTime: 0, percentVolume: "0" }),
+  ];
 }
 
-/* ---------------------------------------------------------------- Jobs */
+/* ==================================================================
+ * Jobs
+ * ================================================================== */
 
-function buildOutputJob(path) {
+function buildOutputJob(block) {
   const actions = [];
 
-  /*
-   * 旋转 Job 的顺序是硬要求（HANDOFF.md §4.3）：
-   * 两个 setDirection 必须排在 setVolume 之前，否则换向会慢一拍。
-   */
-  if (path.directionVar) {
-    actions.push(updateComponent("setDirection", path.channelId, {
+  /* ① 旋转槽专属：方向必须排在速度【之前】，否则换向会慢一拍（docs/01 §3）。 */
+  if (block.directionVar) {
+    actions.push(updateComponent("setDirection", block.channelId, {
       direction: "clockwise",
-      requiredExpression: `{${path.directionVar}} == 1`,
+      requiredExpression: `{${block.directionVar}} == 1`,
     }));
-    actions.push(updateComponent("setDirection", path.channelId, {
+    actions.push(updateComponent("setDirection", block.channelId, {
       direction: "counterclockwise",
-      requiredExpression: `{${path.directionVar}} == -1`,
+      requiredExpression: `{${block.directionVar}} == -1`,
     }));
   }
 
-  actions.push(updateComponent("setVolume", path.channelId, {
-    rampTime: `{${path.rampVar}}`,
-    percentVolume: `{${path.valueVar}}`,
+  /* ② 音量：无条件写（音量是当前输出值，缺省即归零）。 */
+  actions.push(updateComponent("setVolume", block.channelId, {
+    rampTime: `{${block.rampVar}}`,
+    percentVolume: `{${block.volumeVar}}`,
   }));
 
-  if (path.frequencyVar) {
-    actions.push(updateComponent("setFrequency", path.channelId, {
+  /*
+   * ③ E-Stim 频率：【条件动作】。频率变量为哨兵值(-1)表示"本次没有频率意图"，
+   *    两条 Action 的 requiredExpression 都不成立，设备频率保持原样。
+   *    不用 >= 0 直接判断，是为了避开表达式比较运算符的实测不确定性，
+   *    并与旋转方向 Action 的既有形状保持一致。
+   */
+  if (block.frequencyVar) {
+    actions.push(updateComponent("setFrequency", block.channelId, {
       format: "relative",
-      frequencyPercent: `{${path.frequencyVar}}`,
+      frequencyPercent: "0",
+      requiredExpression: `{${block.frequencyVar}} == 0`,
+    }));
+    actions.push(updateComponent("setFrequency", block.channelId, {
+      format: "relative",
+      frequencyPercent: `{${block.frequencyVar}}`,
+      requiredExpression: `{${block.frequencyVar}} > 0`,
     }));
   }
 
-  /* 一次性刷新器：写完硬件立刻停自己。 */
-  actions.push(stopJob(path.outputJob));
+  /* ④ 一次性刷新器：写完硬件立刻停自己。 */
+  actions.push(stopJob(block.outputJob));
 
   return { steps: { START: { actions } } };
 }
@@ -175,7 +142,7 @@ function buildSchedulerJob() {
   return {
     steps: {
       START: {
-        actions: [callBridge("xtoysBridgeTick();")],
+        actions: [customCode("safeCall(function(){xtoysBridgeTick();});")],
         triggers: [
           {
             type: "stepState",
@@ -191,47 +158,41 @@ function buildSchedulerJob() {
   };
 }
 
-/* ---------------------------------------------------------------- 顶层结构 */
+/* ==================================================================
+ * 顶层结构
+ * ================================================================== */
 
 function buildScript(runtimeSource) {
   const jobs = { [SCHEDULER_JOB]: buildSchedulerJob() };
-  for (const path of PATHS) {
-    jobs[path.outputJob] = buildOutputJob(path);
+  for (const block of BLOCKS) {
+    jobs[block.outputJob] = buildOutputJob(block);
   }
 
+  /* ---- Initial Actions：归零音量 → 写配置 → 初始化 JS → 启动调度 ---- */
   const initialActions = [];
-
-  /* 1. 先把每个已绑定 Block 显式归零。 */
-  for (const path of PATHS) {
-    initialActions.push(...zeroBlockActions(path));
-  }
-
-  /* 2. 写配置变量。 */
+  for (const block of BLOCKS) initialActions.push(...zeroBlockActions(block));
   initialActions.push(updateVariable("xthb-config-json", JSON.stringify(BRIDGE_CONFIG)));
-
-  /* 3. 初始化运行时（JS 侧同时把输出变量写零）。 */
-  initialActions.push(callBridge("xtoysBridgeInit();"));
-
-  /* 4. 启动调度 Job。 */
+  initialActions.push(customCode("safeCall(function(){xtoysBridgeInit();});"));
   initialActions.push(startJob(SCHEDULER_JOB));
 
+  /*
+   * ---- Final Actions：顺序是有意这么排的 ----
+   *
+   * 1. 先停调度 Job（不再有新计算进来）
+   * 2. 【显式 UI 归零每个 Block 的音量】← 硬件停止的硬保障
+   * 3. 停所有输出 Job
+   * 4. 最后才跑 JS 的清理函数
+   *
+   * 前两步是**字面量归零**，不依赖任何 JS：即使第 4 步的 JS 抛异常、
+   * 甚至 XToys 在某个 Action 抛错后就中止后续 Action，硬件也已经被写成 0。
+   * 早期版本把 customCode 放在最前面 —— 那正好把唯一的硬保障押在"JS 不抛错"上，
+   * 与 docs/01 §7「JS 抛错时 Final Actions 是唯一保障」自相矛盾。
+   */
   const finalActions = [];
-
-  /* 1. JS 侧清状态 + 把输出变量写零。 */
-  finalActions.push(callBridge("xtoysBridgeStopAll();"));
-
-  /* 2. 停调度 Job。 */
   finalActions.push(stopJob(SCHEDULER_JOB));
-
-  /* 3. 显式 UI 归零每个 Block —— JS 抛错 / 未初始化时唯一的硬件停止保障。 */
-  for (const path of PATHS) {
-    finalActions.push(...zeroBlockActions(path));
-  }
-
-  /* 4. 停掉所有输出 Job。 */
-  for (const path of PATHS) {
-    finalActions.push(stopJob(path.outputJob));
-  }
+  for (const block of BLOCKS) finalActions.push(...zeroBlockActions(block));
+  for (const block of BLOCKS) finalActions.push(stopJob(block.outputJob));
+  finalActions.push(customCode("safeCall(function(){xtoysBridgeStopAll();});"));
 
   return {
     initialActions,
@@ -243,7 +204,7 @@ function buildScript(runtimeSource) {
         channel: "webhook-a",
         parsedAction: "xtoys_game_bridge",
         actions: [
-          customCode("xtoysBridgeHandle(payload);", [
+          customCode("safeCall(function(){xtoysBridgeHandle(payload);});", [
             { name: "payload", value: "trigger-payload", expression: null },
           ]),
         ],
@@ -251,7 +212,7 @@ function buildScript(runtimeSource) {
     ],
     jobs,
     queues: [],
-    channels: CHANNELS,
+    channels: buildChannels(),
     controls: [],
     controlPresets: [],
     media: { audio: {}, voices: {}, patterns: {} },
@@ -259,25 +220,124 @@ function buildScript(runtimeSource) {
   };
 }
 
-/* ---------------------------------------------------------------- 主流程 */
+/* ==================================================================
+ * 生成 + 自检（自检失败即中止，不产出半成品 JSON）
+ * ================================================================== */
 
 const runtimeSource = readFileSync(RUNTIME_SRC, "utf8");
 const script = buildScript(runtimeSource);
+
+function selfCheck() {
+  const errors = [];
+
+  /* 1. 一个 Block 专属一个 part。 */
+  const ownerOf = new Map();
+  for (const part of Object.keys(BRIDGE_CONFIG.parts)) {
+    for (const metric of Object.keys(BRIDGE_CONFIG.parts[part])) {
+      const id = BRIDGE_CONFIG.parts[part][metric];
+      if (ownerOf.has(id)) {
+        errors.push(`Channel ${id} 同时属于 ${ownerOf.get(id)} 与 ${part}`);
+      }
+      ownerOf.set(id, part);
+    }
+  }
+
+  /* 2. 映射引用的 Channel 必须存在，且类型与 metric 匹配。 */
+  for (const part of Object.keys(BRIDGE_CONFIG.parts)) {
+    for (const metric of Object.keys(BRIDGE_CONFIG.parts[part])) {
+      const id = BRIDGE_CONFIG.parts[part][metric];
+      const ch = script.channels[id];
+      if (!ch) {
+        errors.push(`映射引用了不存在的 Channel ${id}（属于 ${part}）`);
+      } else if (ch.type !== METRIC_TYPE[metric]) {
+        errors.push(`${id} 类型是 ${ch.type}，与 metric ${metric} 不匹配`);
+      }
+    }
+  }
+
+  /* 3. 映射表里的部位名必须在合法清单里。 */
+  for (const part of Object.keys(BRIDGE_CONFIG.parts)) {
+    if (!KNOWN_PART_NAMES.includes(part)) errors.push(`${part} 不在合法部位名清单里`);
+  }
+
+  /* 4-8… 变量的写入方由 tools/check-script-contract.mjs 动态验证：
+   * 运行时是按 Channel ID 动态拼变量名的，静态文本匹配证明不了任何事情。
+   * 这里只保留能静态证明的结构性检查。 */
+
+  /* 5. Final Actions 必须显式归零每个 Block 的音量。 */
+  for (const block of BLOCKS) {
+    const zeroed = script.finalActions.some(
+      (a) => a.type === "updateComponent" && a.action === "setVolume" &&
+        a.channel === block.channelId && String(a.percentVolume) === "0",
+    );
+    if (!zeroed) errors.push(`安全：Final Actions 缺少 ${block.channelId} 的音量归零`);
+  }
+
+  /* 5b. 字面量归零必须排在 Final Actions 的 customCode【之前】：
+   * 否则唯一的硬件硬保障就押在"JS 不抛错"上了。 */
+  const firstCustomInFinal = script.finalActions.findIndex((a) => a.type === "customCode");
+  script.finalActions.forEach((a, i) => {
+    if (a.type === "updateComponent" && a.action === "setVolume" && String(a.percentVolume) === "0") {
+      if (firstCustomInFinal >= 0 && i > firstCustomInFinal) {
+        errors.push(`安全：Final Actions 里 ${a.channel} 的归零排在 customCode 之后`);
+      }
+    }
+  });
+
+  /* 6. 不得出现任何频率归零动作。 */
+  for (const bucket of [script.initialActions, script.finalActions]) {
+    for (const a of bucket) {
+      if (a.type === "updateComponent" && a.action === "setFrequency") {
+        errors.push(`安全：${a.channel} 在 Initial/Final Actions 里写了频率（违反 docs/03 §4.5）`);
+      }
+    }
+  }
+
+  /* 7. 旋转 Job 里方向必须排在音量之前。 */
+  for (const block of BLOCKS) {
+    if (!block.directionVar) continue;
+    const actions = script.jobs[block.outputJob].steps.START.actions;
+    const firstVolume = actions.findIndex((a) => a.action === "setVolume");
+    const lastDirection = actions.map((a) => a.action).lastIndexOf("setDirection");
+    if (lastDirection > firstVolume) {
+      errors.push(`顺序：${block.outputJob} 的 setDirection 排在 setVolume 之后`);
+    }
+  }
+
+  /* 8. 每个通道必须恰好有一个输出 Job 引用它。 */
+  for (const block of BLOCKS) {
+    const referencing = Object.entries(script.jobs)
+      .filter(([, job]) => job.steps.START.actions.some((a) => a.channel === block.channelId));
+    if (referencing.length !== 1 || referencing[0][0] !== block.outputJob) {
+      errors.push(`通道 ${block.channelId} 的输出 Job 引用异常：${referencing.map((r) => r[0]).join(",")}`);
+    }
+  }
+
+  if (errors.length > 0) {
+    console.error("自检失败，未产出 JSON：");
+    for (const e of errors) console.error(`  - ${e}`);
+    process.exit(1);
+  }
+}
+
+selfCheck();
 
 mkdirSync(dirname(OUT_JSON), { recursive: true });
 writeFileSync(OUT_JSON, `${JSON.stringify(script, null, 2)}\n`, "utf8");
 writeFileSync(OUT_JS, runtimeSource, "utf8");
 
-const actionCount =
-  script.initialActions.length + script.finalActions.length +
-  Object.values(script.jobs).reduce((n, job) =>
-    n + Object.values(job.steps).reduce((m, step) => m + step.actions.length, 0), 0);
+const jobActionCount = Object.values(script.jobs).reduce(
+  (n, job) => n + Object.values(job.steps).reduce((m, step) => m + step.actions.length, 0), 0);
 
 console.log(`已生成 ${OUT_JSON}`);
-console.log(`  channels      : ${Object.keys(script.channels).length}`);
-console.log(`  jobs          : ${Object.keys(script.jobs).length}`);
-console.log(`  globalTriggers: ${script.globalTriggers.length}`);
+console.log(`  parts         : ${Object.keys(BRIDGE_CONFIG.parts).length} (${Object.keys(BRIDGE_CONFIG.parts).join(", ")})`);
+console.log(`  Block / 通道  : ${BLOCKS.length}`);
+console.log(`  jobs          : ${Object.keys(script.jobs).length} (1 调度 + ${BLOCKS.length} 输出)`);
 console.log(`  initialActions: ${script.initialActions.length}`);
 console.log(`  finalActions  : ${script.finalActions.length}`);
-console.log(`  Action 总数   : ${actionCount}`);
+console.log(`  Job 内 Action : ${jobActionCount}`);
 console.log(`  customFunctions: ${runtimeSource.length} 字符`);
+console.log("  自检：Block 专属 / Channel 类型匹配 / Final 归零齐全 / 无频率归零 / 方向顺序 / Job 引用唯一");
+for (const block of BLOCKS) {
+  console.log(`    ${block.uiName.padEnd(18)} ${block.channelId.padEnd(26)} ${block.outputJob}`);
+}

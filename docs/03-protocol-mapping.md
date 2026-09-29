@@ -43,20 +43,26 @@ Block 是 XToys UI 上的输出槽，也是用户绑定物理设备/子通道的
 
 ### 2.1 命名
 
-设 `{metric} ∈ {estim, vibrate, rotate}`，`{part}` 为协议里的逻辑部位名（小写）。
+设 `{metric} ∈ {estim, vibrate, rotate}`（**变量名与 Channel ID 用通道类型词**，
+即 `estim` / `vibrator` / `rotator`；`{part}` 为协议里的逻辑部位名，小写）。
 
-| 对象 | 规范 | 例（nipple + estim） |
+| 对象 | 规范 | 例（nipple + estim / vibrate） |
 | --- | --- | --- |
-| UI 显示名（Block 名） | `{Metric}-{part}` | `Estim-nipple` |
-| Channel ID | `part-{metric}-{part}` | `part-estim-nipple` |
+| UI 显示名（Block 名） | `{Metric}-{part}` | `Estim-nipple`、`Vibrate-nipple` |
+| Channel ID | `part-{频道类型}-{part}` | `part-estim-nipple`、`part-vibrator-nipple` |
 | 输出 Job | `xthb-output-{metric}-{part}` | `xthb-output-estim-nipple` |
-| 输出变量（值） | `xthb-{metric}-{part}-value` | `xthb-estim-nipple-value` |
-| 输出变量（ramp 秒） | `xthb-{metric}-{part}-ramp-seconds` | `xthb-estim-nipple-ramp-seconds` |
-| 输出变量（E-Stim 频率） | `xthb-{metric}-{part}-frequency` | `xthb-estim-nipple-frequency` |
+| 输出音量变量 | `xthb-{频道类型}-{part}-volume` | `xthb-vibrator-nipple-volume` |
+| 输出 ramp 变量 | `xthb-{频道类型}-{part}-ramp-seconds` | `xthb-vibrator-nipple-ramp-seconds` |
+| E-Stim 频率变量 | `xthb-estim-{part}-frequency` | `xthb-estim-nipple-frequency` |
+| 旋转方向变量 | `xthb-rotator-{part}-direction-code` | `xthb-rotator-nipple-direction-code` |
 
-- `{Metric}` 首字母大写的三种写法固定为 `Estim` / `Vibrate` / `Rotate`；ID 里一律小写。
+- `{Metric}` 首字母大写的三种写法固定为 `Estim` / `Vibrate` / `Rotate`；ID 与变量里一律小写。
+- ⚠️ **注意 metric 名与通道类型词不同**：Job 名用 `vibrate` / `rotate`，
+  而 Channel ID 与变量名用 `vibrator` / `rotator`。这个不一致真实踩过坑：
+  生成器与运行时各按一种理解拼名字，结果输出 Job 去读**永远没人写**的变量，
+  单元测试还全绿。现在命名规则只有一个真源 `tools/xtoys-naming.mjs`，
+  并由 `tools/check-script-contract.mjs` 动态验证"被引用的变量确实有人写"。
 - Channel ID 与变量名**不使用序号**：JSON 里看到名字就知道是哪个部位，不用查表。
-- `{part}` 一律用协议里的名字（`clit` 在协议里就叫什么就写什么，见 §2.3）。
 
 ### 2.2 能表达什么
 
@@ -170,17 +176,30 @@ winner 决定该 Block 的**全部**字段：
 | 字段 | 算法 |
 | --- | --- |
 | `value` | winner 的该 metric 值（解析时已夹到 0–100）；**无候选 → 0** |
-| `frequency` | 只对 estim Block：**跟随同一个 winner** 的 `intent.frequency`；**winner 没有 `frequency` 字段 → `null`（不驱动、不改变设备当前频率）**，见 §4.5 |
+| `frequency` | 只对 estim Block：由**带 `frequency` 的最高优先意图**决定；**没有任何意图带 `frequency` → 哨兵值（不驱动、保持设备当前频率）**，见 §4.5 |
 | `direction` | 只对 rotate Block：`clockwise`→`1`，`counterclockwise`→`-1`；无候选 → `0` |
 | `rampSeconds` | `value <= 0` 用 `intent.rampDownMs`，否则用 `intent.rampUpMs`；`/ 1000`；负值视为 `0` |
 
-两个必须遵守的细节：
+三个必须遵守的细节：
 
-- **`frequency` 跟随同一个 winner，不独立再仲裁一次。** 否则会出现"强度来自 nipple 的事件、
-  频率来自 vagina 的事件"，两个不同部位的值混在一条 E-Stim 输出上，无法解释。
+- **音量与频率各自仲裁，但用同一套三级规则。** 音量 winner 带 `frequency` 时，
+  频率自然就是它的值（同一个意图会在两个维度都胜出）；音量 winner **没提**频率时，
+  频率由"带频率的最高优先意图"补上 —— 这不是矛盾，而是因为
+  **"没提频率" 是"没有意见"，不是"要求不动"**。
+  早期实现把频率完全绑定在音量 winner 上，后果是"只发频率"的意图被一个更强的
+  音量意图压掉、频率根本不生效（`ok:true` 却什么都没发生）。
+- **`frequency` 不能被当作音量**：一个只带 `frequency` 的意图不能让该部位的音量归零。
+  此时音量变量根本不写（保持当前输出），只更新频率。
 - **ramp 是设备级动作，不是 JS 算的曲线。** JS 只算出"这次写值该用多少秒渐变"，
   真正执行渐变的是 XToys 的 `setVolume.rampTime`。所以 §4.4 必须把 `rampSeconds`
   也算进推送条件。
+
+### 4.3.1 每个 target 的 `durationMs` 各自生效
+
+`durationMs` 定义在 **target** 上（`docs/02` §3），所以到期必须**按部位**判定：
+一个事件里 `nipple` 写 200ms、`clitoris` 写 5000ms 时，`nipple` 必须在 200ms 后
+就停止参与仲裁。早期实现把整个事件按 `max(durationMs)` 过期，会让 200ms 的一击
+持续输出 5 秒 —— 这是**超出游戏要求的刺激时长**，属于必须修的缺陷。
 
 ### 4.5 缺省频率 = 保持设备当前值（唯一"缺省 ≠ 0"的指标）
 
@@ -311,6 +330,12 @@ winner 决定该 Block 的**全部**字段：
 | `frequency` | 该部位的 **estim** Block（`vibrate` 永不消费频率） | 忽略并留痕 |
 | `rotateSpeed` + `rotateDirection` | 该部位的 **rotate** Block | 忽略并留痕 |
 
+**`intensity` 与 `frequency` 是 estim Block 上的两个独立维度**，不是"主指标 + 附加项"：
+
+- 只带 `intensity`：改音量，频率保持设备当前值。
+- 只带 `frequency`：**只改频率，音量变量根本不写**（不能把正在输出的强度拽到 0）。
+- 两个都带：音量与频率取同一个意图（它在两个维度都胜出）。
+
 **什么算"可驱动指标"**（用于判断一条 target 是不是空的）：
 
 - `intensity` 出现即算（含 `0`）
@@ -389,6 +414,19 @@ Block 上，而"组"本身没有专属 Block。
 理由：`targets` 在接收端被整理成"部位 → 意图"的表，重复的部位会**静默覆盖**前一条
 （丢数据、没有任何迹象）。而这个写法本身没有存在理由 —— estim / vibrate / rotate
 同时工作时合并为一条即可。**在语法层面禁止它，比让引擎去猜测意图安全得多。**
+
+### 6.6 每个 target 的 `durationMs` 独立到期
+
+见 §4.3.1。同一事件里不同部位可以有不同的存活时长；短的到期后即停止参与仲裁，
+不会被同一事件里更长的部位拖着继续输出。
+
+### 6.7 空 `targets` 的区分
+
+| 命令 | `targets: []` 的含义 |
+| --- | --- |
+| `set_baseline` | **合法**：清空该来源的基线快照（`docs/02` §5） |
+| `play` / `update` | **拒绝**：没有任何目标就没有正 `durationMs`，属于畸形输入；不能让它变成一个"accepted 但什么也不做"的命令 |
+| `stop` | **拒绝**（`missing_stop_selector`）：空选择器什么都没指 |
 
 ---
 

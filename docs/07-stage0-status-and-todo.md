@@ -1,141 +1,199 @@
-# 状态与待办（阶段 0 暂停中）
+# 阶段 0 状态与待办
 
-> 本文件取代 `docs/stage0-status-and-protocol-questions.md`（已删除），是该文件与本轮
-> 协议讨论的合并结果。**恢复工作时先读本文件 + `docs/03-protocol-mapping.md`。**
+> **读这份文件就够了解现状。** 映射与命名规则看 `docs/03-protocol-mapping.md`；
+> 链路与数据流看 `docs/04-architecture-flow.md`；怎么导入和验收看 `docs/06-minimal-script-build.md`。
 
 最后更新：2026-09-30
 
 ---
 
-## 1. 当前状态：阶段 0 已开始但暂停
+## 1. 一句话现状
 
-用户要求：**先讨论清楚协议映射，讨论完成后再动代码**。本轮讨论已完成映射定论
-（见 `docs/03-protocol-mapping.md`），**尚未开始按定论改代码**。
+**阶段 0 的代码已按定论写完，本地验证全绿；真机验收尚未执行（需要你上机）。**
 
-### 已确认的需求（用户亲自选定）
+| 项 | 状态 |
+| --- | --- |
+| 接收端运行时（ES5） | ✅ 已写完并通过本地验证 |
+| 可导入的 Script JSON（9 个 Block） | ✅ 已生成，自检通过 |
+| 导入 / 绑定 / 验收说明 | ✅ `docs/06-minimal-script-build.md` |
+| 逐条真机验收脚本 | ✅ `tools/Invoke-XtoysAcceptance.ps1` |
+| **真机验收** | ❌ **未执行** —— 需要你在 XToys 里导入、绑定设备、跑脚本 |
+| **旋转的两个方向** | ❌ **无法验证**（你没有旋转器），不得记成通过 |
+| 游戏侧代码 | 未开始（`HANDOFF.md` §8：阶段 0 通过之前不写） |
 
-| # | 问题 | 决定 |
+---
+
+## 2. 本地验证结果（可复现）
+
+```powershell
+npm run verify     # = build && test && contract
+```
+
+| 命令 | 结果 |
+| --- | --- |
+| `npm run build` | 生成 9 个 Block / 10 个 Job；7 项结构自检通过 |
+| `npm run test` | **73 项通过 / 0 失败** |
+| `npm run contract` | **契约检查全部通过**（23 个被引用变量全部有写入方） |
+
+**本地验证全绿 ≠ 真机可用。** mock 宿主只说明"JS 调用没有同步抛异常"，
+不代表 Job 执行了、设备收到了（`HANDOFF.md` §3.4）。
+
+### 2.1 独立复核（子智能体，对抗式）
+
+一次只读复核（未改任何文件，独立在 `node:vm` 里跑真实运行时验证行为）确认了：
+A1–A4 硬件安全、B ES5 子集、C 生成器↔运行时契约、D1–D8 逻辑一致性 **全部成立**；
+并找出 14 条缺陷。**其中 6 条是 MAJOR，已全部修复**（见 §3.2）。
+复核也确认那条最有价值的旁证：`examples/xtoys-importable-reference.json` 真的
+导入过 XToys，里面用了 `JSON.parse` 与 `hasOwnProperty` —— 说明这些内建在真实
+JS-Interpreter 里可用。
+
+---
+
+## 3. 本轮实现的东西
+
+| 文件 | 作用 |
+| --- | --- |
+| `src/xtoys-bridge.js` | ES5 运行时：协议解析、状态、仲裁、100ms tick、推送、归零 |
+| `tools/xtoys-naming.mjs` | **映射表与命名规范的单一真源**（加部位只改这里） |
+| `tools/build-xtoys-script.mjs` | 组装可导入的 Script JSON（含 6 项结构自检） |
+| `tools/test-bridge-logic.mjs` | 56 项运行时逻辑测试（mock 宿主） |
+| `tools/check-script-contract.mjs` | **Script JSON ↔ 运行时契约检查** |
+| `tools/Invoke-XtoysAcceptance.ps1` | 逐条真机验收（14 步，交互式记录你的观察） |
+| `examples/xtoys-minimal-3path.json` | 生成物：可导入 Script |
+| `examples/xthb-customFunctions.js` | `customFunctions` 独立可读副本 |
+| `package.json` | `npm run verify` 统一入口 |
+
+### 落实的规则（都来自前面的讨论定论）
+
+- `part` 是唯一的执行定位键，协议与代码里都不出现设备名。
+- 一个 Block 专属一个 part，配重了直接**拒绝初始化**（配置错误早失败）。
+- 三条指标各自独立分派，没有主次/门控。
+- 仲裁只在**同一部位内部**：`priority` → 数值 → `sequence`。
+- 推送判据 = **数值 或 驱动者身份（`driveId`）** 变化 → 同强度新事件会重推。
+- **`frequency` 缺省 = 哨兵值 `-1` = 保持设备当前频率**，不是 0；显式 `0` 才写 0。
+- **删除了部位白名单**：未识别部位走"忽略并留痕"，与"合法但没配 Block"同一条路径。
+- 同部位重复 target、无选择器的 `stop`、`sequence` 未递增 —— **一律如实返回 `ok:false`**。
+- 归零 = 归零音量；**Initial / Final Actions 都不写频率**。
+
+### 修掉的 3 处旧缺陷
+
+| # | 缺陷 | 现状 |
 | --- | --- | --- |
-| 1 | 可用于真机验证的设备 | **只有 E-Stim（强度+频率）与振动器**。没有旋转器。 |
-| 2 | 阶段 0 交付形态 | 可导入的 Script JSON + 导入/绑定步骤 + PowerShell 测试脚本 |
-| 3 | 本轮范围 | 只做阶段 0（遵守 §8「这一步通过之前不要写任何游戏侧代码」） |
-| 4 | 旋转路径 | 照样按规范建好，但**标记为未真机验证** |
-| 5 | Webhook ID | 留空占位符，由用户在 UI 填（符合 §3.6） |
+| 1 | 执行阶段错误未归一化成 `{ok:false}`，导致失败被静默当成成功 | ✅ 已修（`xtoysBridgeHandle` 统一按 `result.ok` 判定） |
+| 2 | `stop` 缺少选择器校验（拖到执行阶段才失败） | ✅ 已修（解析阶段即返回 `missing_stop_selector`） |
+| 3 | 显式 `null` 数值被当成缺省 | ✅ 已修（出现即必须是有限数） |
 
-### 由 #1 推出的后果（交付时必须如实声明）
+### 本轮新发现并修掉的 5 个真实缺陷
 
-- `HANDOFF.md` §9.1 里 **「旋转的两个方向都要验」本轮无法通过**。
-- 我**不得**声称旋转路径已真机验证，只能标注「已按 §4.3 写好，未验证」。
+1. **生成器与运行时变量名不一致**（生成器按 metric 写 `xthb-vibrate-*`，运行时按
+   Channel ID 写 `xthb-vibrator-*`）→ 输出 Job 会去读**永远没人写**的变量，设备什么也收不到。
+   单元测试当时全绿，因为测试里的期望值也是照同一个错误假设手写的。
+   修法：命名规则集中到 `tools/xtoys-naming.mjs` 单一真源 + 新增契约检查动态验证写入方。
+2. **`xthbWritten` 里频率存了哨兵值、计算侧是 `null`** → `needsPush` 每次都误判"变了"，
+   每 100 ms 重复启动全部输出 Job。修法：统一用 `xthbRecordedFrequency()`。
+3. **`xtoysBridgeStopAll()` 只改变量、不推送** → Final Actions 的归零永远送不到输出 Job。
+   修法：真正推送一次，并把零状态记入 `xthbWritten`（避免下个 tick 重复推）。
+
+### 3.2 由独立复核发现并修掉的缺陷
+
+复核（§2.1）找出 14 条，修复如下。**这些都是本地测试全绿也照样存在的缺陷。**
+
+| # | 级别 | 问题 | 修法 |
+| --- | --- | --- | --- |
+| F1 | MAJOR | `stop_all` 推送循环无异常隔离：`callAction` 抛异常会冲出 `handle`（游戏侧收不到 `ok:false`），且 8 个通道停在旧输出；状态还在推送**之前**就写成"已停" | 所有宿主调用包 try/catch + `safeCall` 包住全部入口；状态改为推送**之后**才写；异常计入 `xthb-host-errors` |
+| F2 | MAJOR | 文档承诺的"指标级忽略留痕"根本没实现：`xthbAuditIgnored` 只判断整个部位，`xthbBlocksFor` 写了却从未被调用 | 改为在**接受命令时**逐 target 判定并留痕（部位 + 指标），同一问题只记一次 |
+| F3 | MAJOR | 只发 `frequency` 的意图被接受却什么都不做（频率被绑在音量 winner 上） | 频率改为**独立仲裁**："带频率的最高优先意图"决定；只有频率时**不写音量变量**，避免把正在输出的强度拽到 0 |
+| F4 | MAJOR | `play`/`update` 的空 `targets` 返回 `ok:true` 并占用事件名额；被拒绝的 `stop` 仍会删掉空壳事件（**被拒命令改了状态**） | 空 targets 在解析阶段拒绝；`xthbApplyStop` 先确认真的移除了东西再清理空壳 |
+| F5 | MAJOR | 每个 target 的 `durationMs` 被 `max()` 合并，200 ms 的一击会被同事件的 5000 ms 拖着继续输出（**超出游戏要求的刺激时长**） | 新增 `partFinishAtMs`，**按部位各自到期** |
+| F6 | MAJOR | `test` 要求 `sequence`，而 `docs/02` §5 的示例没有 —— 文档里的预检命令实际会被拒 | `test` 不再要求 `sequence` |
+| F7 | MINOR | 忽略计数按 tick 累加、10 Hz 刷日志，短暂事件的忽略完全看不到 | 改为接受时计数并去重；短暂事件也能留痕 |
+| F8 | MINOR | `stop` 的空 `targets` 在执行阶段才拒绝（与注释和文档不符） | 解析阶段即返回 `missing_stop_selector` |
+| F9 | MINOR | 配置期还有一份部位白名单，与 `docs/03` §6.1「没有白名单」矛盾；`knownParts` 非数组时校验会静默失效 | **删除该白名单**，只要求非空字符串 |
+| F10 | MINOR | 频率哨兵值只校验"是有限数"，落在 0–100 内就无法与真实频率区分 | 配置校验要求哨兵值必须在 0–100 之外 |
+| F11 | MINOR | `docs/03` §2.1 命名表过期（写 `-value`、`part-{metric}-`），照它手写会产出没人读的变量名 | 命名表改为与实际一致，并注明 metric 名与通道类型词的区别 |
+| F12 | MINOR | `source`/`eventId` 含 `\u0000` 时事件身份会碰撞 | 禁止 ID 含控制字符 |
+| F13 | MINOR | 事件到期后序号栅栏消失，webhook 重试/重复投递的旧 sequence 会被接受 → **重复刺激** | 过期事件保留 10 分钟作序号栅栏；过期后仍拒绝旧 sequence |
+| F14 | MINOR | 死代码（`xthbBlocksFor` 未用、不可达分支、未使用的返回值） | 已清理 |
+
+**另外修了一处复核列为"不可本地验证"、但顺序上可以防御的问题**：
+Final Actions 里字面量归零原本排在 `customCode` **之后**，等于把唯一的硬件硬保障
+押在"JS 不抛错"上。现已改为**先归零、最后跑 JS**，并在生成器自检里强制这个顺序。
+
+> ⚠️ 这一条仍有**无法本地验证**的部分：XToys 在某个 Action 抛错后是否中止后续 Action。
+> 真机验收时要专门试一次"让 JS 抛错后停 Script"，确认硬件归零。
 
 ---
 
-## 2. 已写的代码（全部未提交，随时可弃）
+## 4. 待办：真机验收（下一步，需要你）
 
-| 文件 | 内容 | 状态 |
+按 `docs/06-minimal-script-build.md` 执行：
+
+1. `npm run build`（如已生成可跳过）→ 在 XToys 导入 `examples/xtoys-minimal-3path.json`。
+2. **在 UI 上把每个 Block 绑定到恰好一个设备/子通道**（唯一强制手工步骤；
+   `Rotate-nipple` 建议先不绑）。
+3. 拿到 Webhook ID：`$env:XTOYS_WEBHOOK_ID = "<真实 ID>"`（**不要提交进仓库**）。
+4. 手动启动 Script，然后：
+
+```powershell
+pwsh -File tools/Invoke-XtoysAcceptance.ps1              # 全部 14 步
+pwsh -File tools/Invoke-XtoysAcceptance.ps1 -SkipUnverifiable   # 跳过需旋转器的步骤
+```
+
+5. 把结果记到本文件 §5，并把新发现的差异补进 `docs/01-xtoys-script-format.md` §8。
+
+### 验收时特别要盯的几条
+
+| 步骤 | 验什么 |
+| --- | --- |
+| 4 | 同强度新事件**必须**重新渐入（验 `driveId` 推送判据） |
+| 6 | 不带 `frequency` 时**频率保持不变**（验缺省语义，本轮最关键的语义） |
+| 13 | `sequence` 不递增必须被拒绝（验缺陷 1 的回归） |
+
+### 已实测确认的一条事实
+
+**Webhook 对会被整体拒绝的载荷也返回 HTTP 200。** 所以 HTTP 状态码不能用来判断
+命令是否被接受；只能看 XToys Script 日志或诊断变量
+（`xthb-rejected-count` / `xthb-ignored-count` / `xthb-last-error` / `xthb-last-ignored`）。
+
+---
+
+## 5. 真机验收结果（**待填写**）
+
+> 跑完 `tools/Invoke-XtoysAcceptance.ps1` 后把汇总表粘到这里。
+
+| 步骤 | 结果 | 备注 |
 | --- | --- | --- |
-| `src/xtoys-bridge.js` | ES5 运行时：协议解析、状态、仲裁、tick、写变量 + 启动 Job、归零 | `node --check` 通过；**3 处已知缺陷未修完** |
-| `tools/build-xtoys-script.mjs` | 组装可导入 Script JSON | 可运行；**需按映射定论重写 Block 生成部分** |
-| `tools/test-bridge-logic.mjs` | Node + `vm` mock 宿主测试 | **测试结果已过期**（最后跑是 34 通过 / 5 失败，之后又改了运行时） |
-| `examples/xtoys-minimal-3path.json` | 生成物 | **已过期**，需重新生成 |
-| `examples/xthb-customFunctions.js` | `customFunctions` 独立副本 | **已过期**，需重新生成 |
+| 1 E-Stim 基线 | 待填写 | |
+| 2 振动基线 | 待填写 | |
+| 3 瞬态 + 到期回基线 | 待填写 | |
+| 4 同强度重推 | 待填写 | |
+| 5 frequency 显式 | 待填写 | |
+| 6 frequency 缺省不变 | 待填写 | |
+| 7 旋转顺时针 | **无法验证**（无旋转器） | |
+| 8 旋转反向 | **无法验证**（无旋转器） | |
+| 9 多部位独立 | 待填写 | |
+| 10 priority 接管 | 待填写 | |
+| 11 未识别部位被忽略 | 待填写 | |
+| 12 重复部位被拒绝 | 待填写 | |
+| 13 sequence 未递增被拒 | 待填写 | |
+| 14 stop_all 归零 | 待填写 | |
+| 收尾 手动停 Script | 待填写 | |
 
-尚未写：`docs/minimal-script-build.md`、`tools/Invoke-XtoysAcceptance.ps1`。
+**本轮无法验证的项**（如实记录，不得记成通过）：
 
-### 已知缺陷（恢复工作时先修）
-
-1. **错误返回形状不统一。** `xthbExecute` 里 `xthbApplyPlay` / `ApplyBaseline` / `ApplyStop`
-   失败时返回 `{error}`，经 `xtoysBridgeHandle` 后变成 `{ok:true}`。
-   后果：`sequence` 没递增、`stop` 无选择器时**调用方会误以为成功**。
-   修法：`xtoysBridgeHandle` 统一把 `{error}` 归一化为 `{ok:false, code}`。
-2. **`stop` 缺少选择器校验**：应在 `xthbParseCommand` 阶段就返回 `missing_stop_selector`。
-3. **显式 `null` 值**：已改为"出现即必须是有限数"（null 拒绝），但**改完没重跑测试**。
-4. `init` 会置 `forceWrite`，导致初始化后第一次 tick 必推送一次全零。这是有意的
-   （把零值真正推给设备），但测试里要在 `bootHost()` 后先 tick 一次再计数。
-5. 恢复时先跑 `node tools/build-xtoys-script.mjs` 与 `node tools/test-bridge-logic.mjs`，
-   全通过才算形成有效检查点。
-
----
-
-## 3. 本轮协议讨论的产出
-
-**映射与仲裁已定论，全部写入 `docs/03-protocol-mapping.md`**，要点：
-
-- `part` 是协议里唯一的执行定位键；**不加 slot / 逻辑执行器标识 / 权重 / 组**。
-- 映射表是接收端配置；**一个 Block 专属一个 part**，配重了直接拒绝初始化。
-- Block 命名规范：UI 名 `{Metric}-{part}`、Channel ID `part-{metric}-{part}`、
-  Job `xthb-output-{metric}-{part}`、变量 `xthb-{metric}-{part}-*`。
-- 本阶段生成 **9 个 Block**：`nipple` / `clitoris` / `vagina` / `anus` × `estim` / `vibrate`，
-  另加 **1 个旋转样板 `Rotate-nipple`**（用于验证方向 Action 顺序，真机未验证）。
-- 部位名统一用全称 **`clitoris` / `anus`**（不用 `clit` / `anal`）。
-- 仲裁只发生在**同一部位内部**：`priority` → 数值 → `sequence`；`priority` **保留**。
-- 部位/指标没有对应 Block 时 → **忽略并留痕，不报错**（§6.2）。
-- 虚拟组**不做**（与"Block 专属一个 part"冲突）。
-- **rotate 可以单独出现**：游戏侧以后会有"选单部位以哪几种方式发送"的开关，
-  纯 rotate 的 target 合法；该部位只有 estim/vibrate Block 时忽略那一条（§6.2.1）。
-- 三条指标**各自独立**，没有主次/门控关系；`rotateSpeed: 0` 算合法指令（停旋转），方向可省。
-
-同时更新了 `docs/02-webhook-protocol.md` §3（targets 合并规则与指标表、priority 语义）
-与 §4（部位表、虚拟组不做）。
+- 旋转的两个方向（无旋转器）。
+- `rampTime` 单位是否真的是秒（`docs/01` §4.2 一直标 ⚠️ 未独立验证）。
+- `requiredExpression` 里 `>` 运算符的实际行为（频率条件动作依赖它）。
+- 导出 JSON 与导入 JSON 的字段差异。
 
 ---
 
-## 4. 仍未定的事项
+## 6. 之后的路（`HANDOFF.md` §8）
 
-**无。** 协议映射的待议项已全部定论，见 `docs/03-protocol-mapping.md` §7 的结论表。
+1. **阶段 0 真机验收通过**（上面 §4）。
+2. 把 `examples/xtoys-importable-reference.json`（旧的 16 槽样例）替换掉，只留干净的最小示例。
+3. **阶段 1**：接第一个游戏（`レピテーション！` RPG Maker MZ 最省事），只发
+   `set_baseline` + `play`，加命中冷却与高潮锁。
+4. 阶段 2：多设备多部位；阶段 3：第二个引擎；阶段 4（可选）：虚拟组等。
 
-### 4.1 架构流程图评审又定下的两条（2026-09-30）
-
-用户在评审 `docs/04-architecture-flow.md` 时指出两处问题，已定论并写进映射文档：
-
-1. **推送判据不能只比数值** → 改为 **数值 或 驱动者身份（`driveId` = source+eventId+sequence）**
-   任一变化就推送。否则"新事件、强度恰好与当前相同"会被静默丢掉，体感上什么都没发生；
-   而 ramp 是设备级动作，重跑输出 Job 才会重新走一遍 `rampTime`。
-   稳定态下 `driveId` 与数值都不变，防抖依然生效。见 `docs/03-protocol-mapping.md` §4.4。
-2. **删除"协议部位白名单"** → 部位名是否可用完全由接收端映射配置定义；
-   未识别的部位与"合法但没配 Block"走**同一条忽略并留痕**路径，不再整体拒绝。
-   解析阶段对 `part` 的唯一要求是"非空字符串"。见 `docs/03-protocol-mapping.md` §6.1。
-
-这两条都**尚未落到代码**（当前骨架仍是白名单 + 只比数值）。
-
-### 4.2 频率缺省语义（2026-09-30 定，用户指出）
-
-**`frequency` 的缺省值 = XToys 上设备当前的值，即"不变动"，不是置零。**
-这是三条指标里唯一不遵守"缺省即归零"的一条：`intensity`/`rotateSpeed` 描述刺激量，
-缺省归零正确；而 `frequency` 是 E-Stim 的**调制设置**，`intensity=0` 时设备本就无输出，
-写 0 只会改变下一次输出的手感。
-
-连带要改的地方（都比 B6 那一格影响大）：
-
-1. **输出 Job 的 `setFrequency` 必须变成条件动作** —— 用哨兵值区分"没有频率意图"与
-   "频率 = 0"，再用 `requiredExpression` 门控。
-2. **Initial Actions 不得把频率归零**（`docs/01` §7 里旧的 `setFrequency=0` 不沿用）。
-3. **Final Actions 不需要 `setFrequency`** —— 归零的是音量。
-4. `setMode` 同属设置项，**是否保留为固定动作待确认**。
-
-见 `docs/03-protocol-mapping.md` §4.5。
-
-下一步是**动代码**（用户要求讨论完成后再开工）。骨架**已提交**为可回退检查点
-（`76ae08e`，按旧广播模型），远端 `origin/master` 已同步。
-
----
-
-## 5. 恢复后的执行顺序（建议）
-
-0. ~~先提交当前骨架作为检查点~~ → **已完成**：`8eebf78` … `76ae08e` 已推送 `origin/master`。
-1. 修 §2 的缺陷 1–3，跑通生成 + 测试，形成有效检查点。
-2. 按 `docs/03-protocol-mapping.md` 改代码，改动只落在：
-   - `tools/build-xtoys-script.mjs`：按映射表生成 **9 组** channel + Job + 变量（不是 8 组）；
-     `BRIDGE_CONFIG` 换成 §3 形状；命名按 §2.1；
-     **输出 Job 的 `setFrequency` 改成条件动作**、Initial/Final Actions 去掉频率归零（§4.2）。
-   - `src/xtoys-bridge.js`：
-     - `xthbChannelMapFor()` 改查映射表；候选收集按 part 分组（`channels[metric]` → `parts[part][metric]`）；
-     - **删除部位白名单**（§4.1 第 2 条）；
-     - **推送判据加入 `driveId`**（§4.1 第 1 条）；
-     - **频率缺省写哨兵值而非 0**（§4.2）；
-     - 加"Block 专属一个 part"校验；加被忽略指标留痕；加同部位重复 target 拒绝；
-     - 按 §6.2 调整指标校验（`rotateSpeed: 0` 允许无方向）。
-3. 再写 `docs/minimal-script-build.md` 与 `tools/Invoke-XtoysAcceptance.ps1`。
-4. 真机验收：E-Stim + 振动器可完整跑；`Rotate-nipple` 标注未验证。
-5. 验收后把实测差异补进 `docs/01-xtoys-script-format.md` §8。
-
-> ✅ 骨架已提交（`8eebf78` … `76ae08e`，`origin/master` 已同步），工作区干净。
+> ⚠️ `HANDOFF.md` §8 明确：**阶段 0 通过之前不要写任何游戏侧代码。**
