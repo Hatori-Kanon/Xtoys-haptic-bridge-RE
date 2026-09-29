@@ -1,0 +1,20 @@
+# XtoysArunaBridge config
+# Accepts either a bare webhook ID or https://webhook.xtoys.app/<id>
+webhook=
+enabled=false
+sampleIntervalMs=100
+batchWindowMs=250
+quietWindowMs=1200
+postSummaryMs=5000
+minDelta=0.000001
+minDominantRatio=0.35
+maxDeltaForIntensity=0.012
+strengthFullScale=1.0
+minIntensity=8
+maxIntensity=100
+secondaryPartMinWeight=0.02
+secondaryWeightExponent=0.5
+maxSecondaryParts=3
+unavailableLogIntervalMs=5000
+logPayloads=true
+logSamples=false

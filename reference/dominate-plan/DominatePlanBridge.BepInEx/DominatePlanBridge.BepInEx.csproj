@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <AssemblyName>XtoysBridgeDominatePlan</AssemblyName>
+    <RootNamespace>DominatePlanBridge.BepInEx</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Hooks\ProbeHooks.cs" />
+    <Compile Remove="Hooks\ProbeSnapshot.cs" />
+    <Compile Include="..\DominatePlanBridge.Core\BridgeConfig.cs" Link="Core\BridgeConfig.cs" />
+    <Compile Include="..\DominatePlanBridge.Core\BridgeState.cs" Link="Core\BridgeState.cs" />
+    <Compile Include="..\DominatePlanBridge.Core\HitBatcher.cs" Link="Core\HitBatcher.cs" />
+    <Compile Include="..\DominatePlanBridge.Core\HitBatchSlot.cs" Link="Core\HitBatchSlot.cs" />
+    <Compile Include="..\DominatePlanBridge.Core\PartMapper.cs" Link="Core\PartMapper.cs" />
+    <Compile Include="..\DominatePlanBridge.Core\PostStatusAggregator.cs" Link="Core\PostStatusAggregator.cs" />
+    <Compile Include="..\DominatePlanBridge.Core\WebhookIdNormalizer.cs" Link="Core\WebhookIdNormalizer.cs" />
+    <Compile Include="..\DominatePlanBridge.Core\WebhookPayload.cs" Link="Core\WebhookPayload.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="BepInEx">
+      <HintPath>..\..\ドミネートプラン\BepInEx\core\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>..\..\ドミネートプラン\BepInEx\core\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>..\..\ドミネートプラン\ドミネートプラン_Data\Managed\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>..\..\ドミネートプラン\ドミネートプラン_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>..\..\ドミネートプラン\ドミネートプラン_Data\Managed\UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>..\..\ドミネートプラン\ドミネートプラン_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>..\..\ドミネートプラン\ドミネートプラン_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Unity.TextMeshPro">
+      <HintPath>..\..\ドミネートプラン\ドミネートプラン_Data\Managed\Unity.TextMeshPro.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

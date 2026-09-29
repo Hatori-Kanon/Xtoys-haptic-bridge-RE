@@ -1,0 +1,511 @@
+{
+  "initialActions": [
+    {
+      "type": "updateComponent",
+      "action": "setVolume",
+      "channel": "part-estim-a",
+      "rampTime": 0,
+      "percentVolume": "0"
+    },
+    {
+      "type": "updateComponent",
+      "action": "setFrequency",
+      "format": "relative",
+      "channel": "part-estim-a",
+      "frequencyPercent": "0"
+    },
+    {
+      "mode": "standard",
+      "type": "updateComponent",
+      "action": "setMode",
+      "channel": "part-estim-a"
+    },
+    {
+      "type": "updateComponent",
+      "action": "setVolume",
+      "channel": "part-vibrator-a",
+      "rampTime": 0,
+      "percentVolume": "0"
+    },
+    {
+      "type": "updateComponent",
+      "action": "setVolume",
+      "channel": "part-rotator-a",
+      "rampTime": 0,
+      "percentVolume": "0"
+    },
+    {
+      "type": "updateVariable",
+      "variable": "xthb-config-json",
+      "value": "{\"logLevel\":\"errors\",\"globalMultiplier\":1,\"groups\":{\"genitals\":{\"clitoris\":1,\"vulva\":0.8,\"vagina\":0.8,\"penis\":0.8,\"prostate\":0.8},\"lower_body\":{\"vulva\":0.8,\"vagina\":0.8,\"anus\":0.7,\"butt\":0.6,\"penis\":0.7,\"prostate\":0.7},\"double_hole\":{\"vagina\":1,\"anus\":1},\"whole_body\":{\"mouth\":0.4,\"breast\":0.5,\"clitoris\":0.7,\"vagina\":0.7,\"anus\":0.5,\"penis\":0.7},\"mixed\":{\"nipple\":0.5,\"armpit\":0.4,\"vulva\":0.6,\"butt\":0.5,\"prostate\":0.6}},\"slots\":[{\"id\":1,\"enabled\":true,\"type\":\"intensity\",\"frequencyEnabled\":true,\"routes\":{\"clitoris\":1}},{\"id\":2,\"enabled\":true,\"type\":\"intensity\",\"frequencyEnabled\":false,\"routes\":{\"vagina\":1}},{\"id\":3,\"enabled\":true,\"type\":\"rotation\",\"frequencyEnabled\":false,\"routes\":{\"clitoris\":1}},{\"id\":4,\"enabled\":false,\"type\":\"intensity\",\"frequencyEnabled\":false,\"routes\":{}},{\"id\":5,\"enabled\":false,\"type\":\"intensity\",\"frequencyEnabled\":false,\"routes\":{}},{\"id\":6,\"enabled\":false,\"type\":\"intensity\",\"frequencyEnabled\":false,\"routes\":{}},{\"id\":7,\"enabled\":false,\"type\":\"intensity\",\"frequencyEnabled\":false,\"routes\":{}},{\"id\":8,\"enabled\":false,\"type\":\"intensity\",\"frequencyEnabled\":false,\"routes\":{}},{\"id\":9,\"enabled\":false,\"type\":\"intensity\",\"frequencyEnabled\":false,\"routes\":{}},{\"id\":10,\"enabled\":false,\"type\":\"intensity\",\"frequencyEnabled\":false,\"routes\":{}},{\"id\":11,\"enabled\":false,\"type\":\"intensity\",\"frequencyEnabled\":false,\"routes\":{}},{\"id\":12,\"enabled\":false,\"type\":\"intensity\",\"frequencyEnabled\":false,\"routes\":{}},{\"id\":13,\"enabled\":false,\"type\":\"intensity\",\"frequencyEnabled\":false,\"routes\":{}},{\"id\":14,\"enabled\":false,\"type\":\"intensity\",\"frequencyEnabled\":false,\"routes\":{}},{\"id\":15,\"enabled\":false,\"type\":\"intensity\",\"frequencyEnabled\":false,\"routes\":{}},{\"id\":16,\"enabled\":false,\"type\":\"intensity\",\"frequencyEnabled\":false,\"routes\":{}}]}"
+    },
+    {
+      "code": "xtoysBridgeInit();",
+      "type": "customCode",
+      "resultVar": "result",
+      "variables": [],
+      "storeResult": false
+    },
+    {
+      "job": "xthb-scheduler",
+      "type": "updateJob",
+      "action": "start"
+    }
+  ],
+  "finalActions": [
+    {
+      "code": "xtoysBridgeStopAll();",
+      "type": "customCode",
+      "resultVar": "result",
+      "variables": [],
+      "storeResult": false
+    },
+    {
+      "job": "xthb-scheduler",
+      "type": "updateJob",
+      "action": "stop"
+    },
+    {
+      "type": "updateComponent",
+      "action": "setVolume",
+      "channel": "part-estim-a",
+      "rampTime": 0,
+      "percentVolume": "0"
+    },
+    {
+      "type": "updateComponent",
+      "action": "setFrequency",
+      "format": "relative",
+      "channel": "part-estim-a",
+      "frequencyPercent": "0"
+    },
+    {
+      "type": "updateComponent",
+      "action": "setVolume",
+      "channel": "part-vibrator-a",
+      "rampTime": 0,
+      "percentVolume": "0"
+    },
+    {
+      "type": "updateComponent",
+      "action": "setVolume",
+      "channel": "part-rotator-a",
+      "rampTime": 0,
+      "percentVolume": "0"
+    },
+    {
+      "job": "xthb-output-01",
+      "type": "updateJob",
+      "action": "stop"
+    },
+    {
+      "job": "xthb-output-02",
+      "type": "updateJob",
+      "action": "stop"
+    },
+    {
+      "job": "xthb-output-03",
+      "type": "updateJob",
+      "action": "stop"
+    },
+    {
+      "job": "xthb-output-04",
+      "type": "updateJob",
+      "action": "stop"
+    },
+    {
+      "job": "xthb-output-05",
+      "type": "updateJob",
+      "action": "stop"
+    },
+    {
+      "job": "xthb-output-06",
+      "type": "updateJob",
+      "action": "stop"
+    },
+    {
+      "job": "xthb-output-07",
+      "type": "updateJob",
+      "action": "stop"
+    },
+    {
+      "job": "xthb-output-08",
+      "type": "updateJob",
+      "action": "stop"
+    },
+    {
+      "job": "xthb-output-09",
+      "type": "updateJob",
+      "action": "stop"
+    },
+    {
+      "job": "xthb-output-10",
+      "type": "updateJob",
+      "action": "stop"
+    },
+    {
+      "job": "xthb-output-11",
+      "type": "updateJob",
+      "action": "stop"
+    },
+    {
+      "job": "xthb-output-12",
+      "type": "updateJob",
+      "action": "stop"
+    },
+    {
+      "job": "xthb-output-13",
+      "type": "updateJob",
+      "action": "stop"
+    },
+    {
+      "job": "xthb-output-14",
+      "type": "updateJob",
+      "action": "stop"
+    },
+    {
+      "job": "xthb-output-15",
+      "type": "updateJob",
+      "action": "stop"
+    },
+    {
+      "job": "xthb-output-16",
+      "type": "updateJob",
+      "action": "stop"
+    }
+  ],
+  "globalTriggers": [
+    {
+      "type": "componentState",
+      "action": "xtoys_game_bridge",
+      "actions": [
+        {
+          "code": "xtoysBridgeHandle(payload);",
+          "type": "customCode",
+          "resultVar": "result",
+          "variables": [
+            {
+              "name": "payload",
+              "value": "trigger-payload",
+              "expression": null
+            }
+          ],
+          "storeResult": false
+        }
+      ],
+      "channel": "webhook-a",
+      "parsedAction": "xtoys_game_bridge"
+    }
+  ],
+  "jobs": {
+    "xthb-scheduler": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "code": "xtoysBridgeTick();",
+              "type": "customCode",
+              "resultVar": "result",
+              "variables": [],
+              "storeResult": false
+            }
+          ],
+          "triggers": [
+            {
+              "type": "stepState",
+              "event": "timer",
+              "amount": "0.1",
+              "actions": [
+                {
+                  "job": "xthb-scheduler",
+                  "step": "START",
+                  "type": "updateJob",
+                  "action": "goTo"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "xthb-output-01": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "type": "updateComponent",
+              "action": "setFrequency",
+              "format": "relative",
+              "channel": "part-estim-a",
+              "frequencyPercent": "{xthb-slot-01-frequency}"
+            },
+            {
+              "type": "updateComponent",
+              "action": "setVolume",
+              "channel": "part-estim-a",
+              "rampTime": "{xthb-slot-01-ramp-seconds}",
+              "percentVolume": "{xthb-slot-01-value}"
+            },
+            {
+              "job": "xthb-output-01",
+              "type": "updateJob",
+              "action": "stop"
+            }
+          ]
+        }
+      }
+    },
+    "xthb-output-02": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "type": "updateComponent",
+              "action": "setVolume",
+              "channel": "part-vibrator-a",
+              "rampTime": "{xthb-slot-02-ramp-seconds}",
+              "percentVolume": "{xthb-slot-02-value}"
+            },
+            {
+              "job": "xthb-output-02",
+              "type": "updateJob",
+              "action": "stop"
+            }
+          ]
+        }
+      }
+    },
+    "xthb-output-03": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "type": "updateComponent",
+              "action": "setDirection",
+              "channel": "part-rotator-a",
+              "direction": "clockwise",
+              "requiredExpression": "{xthb-slot-03-direction-code} == 1"
+            },
+            {
+              "type": "updateComponent",
+              "action": "setDirection",
+              "channel": "part-rotator-a",
+              "direction": "counterclockwise",
+              "requiredExpression": "{xthb-slot-03-direction-code} == -1"
+            },
+            {
+              "type": "updateComponent",
+              "action": "setVolume",
+              "channel": "part-rotator-a",
+              "rampTime": "{xthb-slot-03-ramp-seconds}",
+              "percentVolume": "{xthb-slot-03-value}"
+            },
+            {
+              "job": "xthb-output-03",
+              "type": "updateJob",
+              "action": "stop"
+            }
+          ]
+        }
+      }
+    },
+    "xthb-output-04": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "job": "xthb-output-04",
+              "type": "updateJob",
+              "action": "stop"
+            }
+          ]
+        }
+      }
+    },
+    "xthb-output-05": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "job": "xthb-output-05",
+              "type": "updateJob",
+              "action": "stop"
+            }
+          ]
+        }
+      }
+    },
+    "xthb-output-06": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "job": "xthb-output-06",
+              "type": "updateJob",
+              "action": "stop"
+            }
+          ]
+        }
+      }
+    },
+    "xthb-output-07": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "job": "xthb-output-07",
+              "type": "updateJob",
+              "action": "stop"
+            }
+          ]
+        }
+      }
+    },
+    "xthb-output-08": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "job": "xthb-output-08",
+              "type": "updateJob",
+              "action": "stop"
+            }
+          ]
+        }
+      }
+    },
+    "xthb-output-09": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "job": "xthb-output-09",
+              "type": "updateJob",
+              "action": "stop"
+            }
+          ]
+        }
+      }
+    },
+    "xthb-output-10": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "job": "xthb-output-10",
+              "type": "updateJob",
+              "action": "stop"
+            }
+          ]
+        }
+      }
+    },
+    "xthb-output-11": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "job": "xthb-output-11",
+              "type": "updateJob",
+              "action": "stop"
+            }
+          ]
+        }
+      }
+    },
+    "xthb-output-12": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "job": "xthb-output-12",
+              "type": "updateJob",
+              "action": "stop"
+            }
+          ]
+        }
+      }
+    },
+    "xthb-output-13": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "job": "xthb-output-13",
+              "type": "updateJob",
+              "action": "stop"
+            }
+          ]
+        }
+      }
+    },
+    "xthb-output-14": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "job": "xthb-output-14",
+              "type": "updateJob",
+              "action": "stop"
+            }
+          ]
+        }
+      }
+    },
+    "xthb-output-15": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "job": "xthb-output-15",
+              "type": "updateJob",
+              "action": "stop"
+            }
+          ]
+        }
+      }
+    },
+    "xthb-output-16": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "job": "xthb-output-16",
+              "type": "updateJob",
+              "action": "stop"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "queues": [],
+  "channels": {
+    "webhook-a": {
+      "name": "",
+      "type": "webhook",
+      "outbound": false,
+      "hideWebhookInfo": false
+    },
+    "part-estim-a": {
+      "name": "Clitoris Estim",
+      "type": "part-estim"
+    },
+    "part-vibrator-a": {
+      "name": "Vagina Vibrator",
+      "type": "part-vibrator"
+    },
+    "part-rotator-a": {
+      "name": "Clitoris Rotator",
+      "type": "part-rotator"
+    }
+  },
+  "controls": [],
+  "controlPresets": [],
+  "media": {
+    "audio": {},
+    "voices": {},
+    "patterns": {}
+  },
+  "customFunctions": "var XTHB = typeof XTHB === 'undefined' ? {} : XTHB;\n(function (ns) {\n  XTHB.MODULE_NAMESPACE = true;\n  ns.VERSION = '1.0.0';\n  ns.PROTOCOL_VERSION = 1;\n  ns.MAX_PAYLOAD_LENGTH = 32768;\n  ns.MAX_TARGETS = 32;\n  ns.MAX_STATES = 32;\n  ns.MAX_IDENTIFIER_LENGTH = 128;\n  ns.MAX_STATE_LABEL_LENGTH = 128;\n  ns.MAX_ACTIVE_EVENTS = 128;\n  ns.MAX_ACTIVE_EVENT_TARGETS = 256;\n  ns.SCHEDULER_INTERVAL_MS = 100;\n  ns.MAX_CADENCE_RECORDS = ns.MAX_ACTIVE_EVENT_TARGETS;\n  ns.MAX_BASELINE_SOURCES = 64;\n  ns.MAX_BASELINE_TARGETS = 256;\n  ns.MAX_TIME_MS = 600000;\n  ns.clamp = function (value, min, max) {\n    return Math.max(min, Math.min(max, value));\n  };\n  ns.copyObject = function (value) {\n    return value === null || typeof value !== 'object'\n      ? value\n      : JSON.parse(JSON.stringify(value));\n  };\n  ns.compositeKey = function (parts) {\n    return JSON.stringify(parts);\n  };\n  ns.nowMs = function () { return new Date().getTime(); };\n  ns.createDefaultConfig = function () {\n    var groups = {\n      genitals: {},\n      lower_body: {},\n      double_hole: {},\n      whole_body: {},\n      mixed: {}\n    };\n    var slots = [];\n    var id;\n\n    for (id = 1; id <= 16; id += 1) {\n      slots.push({\n        id: id,\n        enabled: false,\n        type: 'intensity',\n        frequencyEnabled: false,\n        routes: {}\n      });\n    }\n\n    return {\n      logLevel: 'errors',\n      globalMultiplier: 1,\n      groups: groups,\n      slots: slots\n    };\n  };\n}(XTHB));\n(function (ns) {\n  var hasOwn = Object.prototype.hasOwnProperty;\n  var leafParts = {\n    mouth: true,\n    breast: true,\n    nipple: true,\n    armpit: true,\n    clitoris: true,\n    vulva: true,\n    vagina: true,\n    urethra: true,\n    anus: true,\n    butt: true,\n    penis: true,\n    prostate: true\n  };\n  var groupNames = {\n    genitals: true,\n    lower_body: true,\n    double_hole: true,\n    whole_body: true,\n    mixed: true\n  };\n  var commands = {\n    play: true,\n    update: true,\n    stop: true,\n    stop_all: true,\n    set_baseline: true,\n    test: true\n  };\n  var logLevels = { off: true, errors: true, debug: true };\n  var slotTypes = { intensity: true, rotation: true };\n  var effects = { hold: true, pulse: true };\n  var blends = { replace: true, max: true };\n  var baselineBlends = { boost: true, replace: true, max: true };\n\n  function fail(code, detail) {\n    return { ok: false, code: code, detail: detail };\n  }\n\n  function isObject(value) {\n    return value !== null && typeof value === 'object' && !Array.isArray(value);\n  }\n\n  function isBlankString(value) {\n    return typeof value === 'string' && value.replace(/^\\s+|\\s+$/g, '') === '';\n  }\n\n  function numberValue(value, code) {\n    var number;\n    if (value === null || value === undefined || isBlankString(value)) {\n      return fail(code, 'A finite numeric value is required.');\n    }\n    number = Number(value);\n    if (!isFinite(number)) {\n      return fail(code, 'A finite numeric value is required.');\n    }\n    return { ok: true, value: number };\n  }\n\n  function boundedWeight(value, code) {\n    var parsed = numberValue(value, code);\n    if (!parsed.ok || parsed.value < 0 || parsed.value > 1) {\n      return !parsed.ok ? parsed : fail(code, 'Weight must be between 0 and 1.');\n    }\n    return parsed;\n  }\n\n  function validateWeightMap(map, allowedParts, code) {\n    var key;\n    var parsed;\n    var normalized = {};\n    if (!isObject(map)) {\n      return fail(code, 'Routes must be an object.');\n    }\n    for (key in map) {\n      if (hasOwn.call(map, key)) {\n        if (!hasOwn.call(allowedParts, key)) {\n          return fail('unknown_part', 'Route references an unsupported leaf part.');\n        }\n        parsed = boundedWeight(map[key], code);\n        if (!parsed.ok) {\n          return parsed;\n        }\n        normalized[key] = parsed.value;\n      }\n    }\n    return { ok: true, value: normalized };\n  }\n\n  ns.validateConfig = function (config) {\n    var key;\n    var index;\n    var slot;\n    var id;\n    var routeResult;\n    var groupResult;\n    var multiplier;\n    var ids = {};\n    var slots = [];\n    var groups = {};\n\n    if (!isObject(config)) {\n      return fail('invalid_config', 'Configuration must be an object.');\n    }\n    if (!hasOwn.call(logLevels, config.logLevel)) {\n      return fail('invalid_log_level', 'Unsupported log level.');\n    }\n    multiplier = numberValue(config.globalMultiplier, 'invalid_global_multiplier');\n    if (!multiplier.ok || multiplier.value < 0) {\n      return !multiplier.ok ? multiplier : fail('invalid_global_multiplier', 'Global multiplier must not be negative.');\n    }\n    if (!isObject(config.groups)) {\n      return fail('invalid_groups', 'Groups must be an object.');\n    }\n    for (key in config.groups) {\n      if (hasOwn.call(config.groups, key) && !hasOwn.call(groupNames, key)) {\n        return fail('unknown_group', 'Unsupported virtual group.');\n      }\n    }\n    for (key in groupNames) {\n      if (!hasOwn.call(config.groups, key)) {\n        return fail('missing_group', 'Every supported virtual group is required.');\n      }\n      groupResult = validateWeightMap(config.groups[key], leafParts, 'invalid_group_weight');\n      if (!groupResult.ok) {\n        return groupResult;\n      }\n      groups[key] = groupResult.value;\n    }\n    if (!Array.isArray(config.slots) || config.slots.length !== 16) {\n      return fail('invalid_slot_count', 'Exactly sixteen output slots are required.');\n    }\n    for (index = 0; index < config.slots.length; index += 1) {\n      slot = config.slots[index];\n      if (!isObject(slot) || !hasOwn.call(slot, 'id') || !hasOwn.call(slot, 'enabled') ||\n          !hasOwn.call(slot, 'type') || !hasOwn.call(slot, 'frequencyEnabled') || !hasOwn.call(slot, 'routes')) {\n        return fail('invalid_slot', 'Every slot must include all required fields.');\n      }\n      id = numberValue(slot.id, 'invalid_slot_id');\n      if (!id.ok || id.value % 1 !== 0 || id.value < 1 || id.value > 16 || hasOwn.call(ids, id.value)) {\n        return !id.ok ? id : fail('invalid_slot_id', 'Slot IDs must be unique values from 1 through 16.');\n      }\n      if (typeof slot.enabled !== 'boolean') {\n        return fail('invalid_slot_enabled', 'Slot enabled must be a boolean.');\n      }\n      if (!hasOwn.call(slotTypes, slot.type)) {\n        return fail('invalid_slot_type', 'Unsupported slot type.');\n      }\n      if (typeof slot.frequencyEnabled !== 'boolean') {\n        return fail('invalid_frequency_enabled', 'Frequency enabled must be a boolean.');\n      }\n      routeResult = validateWeightMap(slot.routes, leafParts, 'invalid_route_weight');\n      if (!routeResult.ok) {\n        return routeResult;\n      }\n      ids[id.value] = true;\n      slots[id.value - 1] = {\n        id: id.value,\n        enabled: slot.enabled,\n        type: slot.type,\n        frequencyEnabled: slot.frequencyEnabled,\n        routes: routeResult.value\n      };\n    }\n    for (index = 1; index <= 16; index += 1) {\n      if (!hasOwn.call(ids, index)) {\n        return fail('invalid_slot_id', 'Slot IDs must include every value from 1 through 16.');\n      }\n    }\n    return {\n      ok: true,\n      config: {\n        logLevel: config.logLevel,\n        globalMultiplier: multiplier.value,\n        groups: groups,\n        slots: slots\n      }\n    };\n  };\n\n  function supportedPart(part, config) {\n    return typeof part === 'string' && (hasOwn.call(leafParts, part) || hasOwn.call(config.groups, part));\n  }\n\n  function optionalNumber(value, defaultValue, code) {\n    if (value === undefined) {\n      return { ok: true, value: defaultValue };\n    }\n    return numberValue(value, code);\n  }\n\n  function normalizedRetrigger(raw, target) {\n    var required = [\n      'mode', 'minDropPercent', 'maxDropPercent', 'minRampUpMs',\n      'minRampDownMs', 'textureThresholdMs', 'quietResetMs'\n    ];\n    var index;\n    var value;\n    var result = {};\n    if (raw === undefined) {\n      return { ok: true, value: null };\n    }\n    if (!isObject(raw)) {\n      return fail('invalid_retrigger', 'Retrigger must be an object.');\n    }\n    for (index = 0; index < required.length; index += 1) {\n      if (!hasOwn.call(raw, required[index])) {\n        return fail('invalid_retrigger', 'Every retrigger field is required.');\n      }\n    }\n    if (raw.mode !== 'adaptive') {\n      return fail('invalid_retrigger', 'Unsupported retrigger mode.');\n    }\n    if (target.effect !== 'hold') {\n      return fail('invalid_retrigger_effect', 'Adaptive retrigger requires hold effect.');\n    }\n    value = numberValue(raw.minDropPercent, 'invalid_retrigger');\n    if (!value.ok) { return value; }\n    result.minDropPercent = value.value;\n    value = numberValue(raw.maxDropPercent, 'invalid_retrigger');\n    if (!value.ok) { return value; }\n    result.maxDropPercent = value.value;\n    value = numberValue(raw.minRampUpMs, 'invalid_retrigger');\n    if (!value.ok) { return value; }\n    result.minRampUpMs = value.value;\n    value = numberValue(raw.minRampDownMs, 'invalid_retrigger');\n    if (!value.ok) { return value; }\n    result.minRampDownMs = value.value;\n    value = numberValue(raw.textureThresholdMs, 'invalid_retrigger');\n    if (!value.ok) { return value; }\n    result.textureThresholdMs = value.value;\n    value = numberValue(raw.quietResetMs, 'invalid_retrigger');\n    if (!value.ok) { return value; }\n    result.quietResetMs = value.value;\n    if (result.minDropPercent < 0 || result.maxDropPercent > 100 ||\n        result.minDropPercent > result.maxDropPercent ||\n        result.minRampUpMs < 0 || result.minRampUpMs > target.rampUpMs ||\n        result.minRampDownMs < 0 || result.minRampDownMs > target.rampDownMs ||\n        result.textureThresholdMs < ns.SCHEDULER_INTERVAL_MS ||\n        result.textureThresholdMs > ns.MAX_TIME_MS ||\n        result.quietResetMs > ns.MAX_TIME_MS ||\n        result.quietResetMs <= result.textureThresholdMs) {\n      return fail('invalid_retrigger', 'Retrigger ranges are inconsistent.');\n    }\n    if (result.minRampDownMs + ns.SCHEDULER_INTERVAL_MS +\n        result.minRampUpMs > target.durationMs) {\n      return fail('invalid_retrigger_timing', 'Minimum retrigger envelope exceeds duration.');\n    }\n    result.mode = 'adaptive';\n    return { ok: true, value: result };\n  }\n\n  function normalizedTarget(raw, config, transient) {\n    var parsed;\n    var rotateSpeed;\n    var direction;\n    var target;\n    if (!isObject(raw) || !supportedPart(raw.part, config)) {\n      return fail('unknown_part', 'Target references an unsupported part.');\n    }\n    if (raw.effect !== undefined && !hasOwn.call(effects, raw.effect)) {\n      return fail('invalid_effect', 'Unsupported target effect.');\n    }\n    if (raw.blend !== undefined && !hasOwn.call(blends, raw.blend)) {\n      return fail('invalid_blend', 'Unsupported target blend.');\n    }\n    if (raw.baselineBlend !== undefined && !hasOwn.call(baselineBlends, raw.baselineBlend)) {\n      return fail('invalid_baseline_blend', 'Unsupported baseline blend.');\n    }\n    parsed = optionalNumber(raw.intensity, 0, 'invalid_number');\n    if (!parsed.ok) {\n      return parsed;\n    }\n    target = {\n      part: raw.part,\n      effect: raw.effect === undefined ? 'hold' : raw.effect,\n      intensity: ns.clamp(parsed.value, 0, 100),\n      hasIntensity: raw.intensity !== undefined,\n      frequency: 0,\n      hasFrequency: raw.frequency !== undefined,\n      rotateSpeed: null,\n      hasRotateSpeed: raw.rotateSpeed !== undefined,\n      rotateDirection: null,\n      durationMs: 0,\n      rampUpMs: 0,\n      rampDownMs: 0,\n      pulseOnMs: 0,\n      pulseOffMs: 0,\n      priority: 0,\n      blend: raw.blend === undefined ? 'replace' : raw.blend,\n      baselineBlend: raw.baselineBlend === undefined ? 'boost' : raw.baselineBlend,\n      retrigger: null\n    };\n    parsed = optionalNumber(raw.frequency, 0, 'invalid_number');\n    if (!parsed.ok) {\n      return parsed;\n    }\n    target.frequency = ns.clamp(parsed.value, 0, 100);\n    if (raw.rotateSpeed !== undefined) {\n      rotateSpeed = numberValue(raw.rotateSpeed, 'invalid_number');\n      if (!rotateSpeed.ok) {\n        return rotateSpeed;\n      }\n      target.rotateSpeed = ns.clamp(rotateSpeed.value, 0, 100);\n    }\n    direction = raw.rotateDirection;\n    if (direction !== undefined && direction !== null && direction !== 'clockwise' && direction !== 'counterclockwise') {\n      return fail('invalid_rotate_direction', 'Rotation direction is unsupported.');\n    }\n    if (target.rotateSpeed !== null && target.rotateSpeed > 0 && (direction !== 'clockwise' && direction !== 'counterclockwise')) {\n      return fail('invalid_rotate_direction', 'Positive rotation speed requires a direction.');\n    }\n    target.rotateDirection = direction === undefined ? null : direction;\n    if (transient) {\n      parsed = numberValue(raw.durationMs, 'invalid_duration');\n      if (!parsed.ok || parsed.value <= 0) {\n        return !parsed.ok ? parsed : fail('invalid_duration', 'Transient duration must be positive.');\n      }\n      target.durationMs = ns.clamp(parsed.value, 0, ns.MAX_TIME_MS);\n    } else {\n      parsed = optionalNumber(raw.durationMs, 0, 'invalid_number');\n      if (!parsed.ok) {\n        return parsed;\n      }\n      target.durationMs = ns.clamp(parsed.value, 0, ns.MAX_TIME_MS);\n    }\n    parsed = optionalNumber(raw.rampUpMs, 0, 'invalid_number');\n    if (!parsed.ok) {\n      return parsed;\n    }\n    target.rampUpMs = ns.clamp(parsed.value, 0, ns.MAX_TIME_MS);\n    parsed = optionalNumber(raw.rampDownMs, 0, 'invalid_number');\n    if (!parsed.ok) {\n      return parsed;\n    }\n    target.rampDownMs = ns.clamp(parsed.value, 0, ns.MAX_TIME_MS);\n    parsed = optionalNumber(raw.pulseOnMs, 0, 'invalid_number');\n    if (!parsed.ok) {\n      return parsed;\n    }\n    target.pulseOnMs = ns.clamp(parsed.value, 0, ns.MAX_TIME_MS);\n    parsed = optionalNumber(raw.pulseOffMs, 0, 'invalid_number');\n    if (!parsed.ok) {\n      return parsed;\n    }\n    target.pulseOffMs = ns.clamp(parsed.value, 0, ns.MAX_TIME_MS);\n    parsed = optionalNumber(raw.priority, 0, 'invalid_number');\n    if (!parsed.ok) {\n      return parsed;\n    }\n    target.priority = parsed.value;\n    if (transient) {\n      parsed = normalizedRetrigger(raw.retrigger, target);\n      if (!parsed.ok) {\n        return parsed;\n      }\n      target.retrigger = parsed.value;\n    } else if (raw.retrigger !== undefined) {\n      return fail('invalid_retrigger', 'Retrigger is only supported for transient targets.');\n    }\n    return { ok: true, value: target };\n  }\n\n  function parseTargets(rawTargets, config, transient, required) {\n    var index;\n    var parsed;\n    var targets = [];\n    if (!Array.isArray(rawTargets)) {\n      return fail('invalid_targets', 'Targets must be an array.');\n    }\n    if (rawTargets.length > ns.MAX_TARGETS) {\n      return fail('too_many_targets', 'Too many targets.');\n    }\n    if (required && rawTargets.length === 0) {\n      return fail('missing_targets', 'At least one target is required.');\n    }\n    for (index = 0; index < rawTargets.length; index += 1) {\n      parsed = normalizedTarget(rawTargets[index], config, transient);\n      if (!parsed.ok) {\n        return parsed;\n      }\n      targets.push(parsed.value);\n    }\n    return { ok: true, value: targets };\n  }\n\n  function normalizedSequence(value) {\n    return numberValue(value, 'invalid_sequence');\n  }\n\n  ns.parseMessage = function (payloadText, config) {\n    var payload;\n    var configResult;\n    var targets;\n    var sequence;\n    var states;\n    var index;\n    var transient;\n    var message;\n    if (typeof payloadText !== 'string') {\n      return fail('invalid_payload', 'Payload must be a JSON string.');\n    }\n    if (payloadText.length > ns.MAX_PAYLOAD_LENGTH) {\n      return fail('payload_too_large', 'Payload exceeds the maximum length.');\n    }\n    try {\n      payload = JSON.parse(payloadText);\n    } catch (error) {\n      return fail('invalid_json', 'Payload is not valid JSON.');\n    }\n    if (!isObject(payload)) {\n      return fail('invalid_payload', 'Payload must decode to an object.');\n    }\n    if (payload.protocolVersion !== ns.PROTOCOL_VERSION) {\n      return fail('unsupported_protocol_version', 'Unsupported protocol version.');\n    }\n    if (typeof payload.command !== 'string' || !hasOwn.call(commands, payload.command)) {\n      return fail('unsupported_command', 'Unsupported command.');\n    }\n    if (typeof payload.source !== 'string' || isBlankString(payload.source)) {\n      return fail('missing_source', 'Source is required.');\n    }\n    if (payload.command !== 'stop_all' && payload.source.length > ns.MAX_IDENTIFIER_LENGTH) {\n      return fail('identifier_too_long', 'Source exceeds the maximum length.');\n    }\n    if (payload.states !== undefined) {\n      if (!Array.isArray(payload.states)) {\n        return fail('invalid_states', 'States must be an array.');\n      }\n      if (payload.states.length > ns.MAX_STATES) {\n        return fail('too_many_states', 'Too many state labels.');\n      }\n      states = [];\n      for (index = 0; index < payload.states.length; index += 1) {\n        if (typeof payload.states[index] !== 'string') {\n          return fail('invalid_states', 'State labels must be strings.');\n        }\n        if (payload.command !== 'stop_all' && payload.states[index].length > ns.MAX_STATE_LABEL_LENGTH) {\n          return fail('state_label_too_long', 'State label exceeds the maximum length.');\n        }\n        states.push(payload.states[index]);\n      }\n    } else {\n      states = [];\n    }\n    message = {\n      protocolVersion: ns.PROTOCOL_VERSION,\n      command: payload.command,\n      source: payload.source,\n      eventId: null,\n      sequence: null,\n      states: states,\n      targets: []\n    };\n    if (payload.command === 'stop_all') {\n      return { ok: true, message: message };\n    }\n    configResult = ns.validateConfig(config);\n    if (!configResult.ok) {\n      return configResult;\n    }\n    if (payload.command === 'play' || payload.command === 'update') {\n      if (typeof payload.eventId !== 'string' || isBlankString(payload.eventId)) {\n        return fail('missing_event_id', 'A non-empty event ID is required.');\n      }\n      if (payload.eventId.length > ns.MAX_IDENTIFIER_LENGTH) {\n        return fail('identifier_too_long', 'Event ID exceeds the maximum length.');\n      }\n      sequence = normalizedSequence(payload.sequence);\n      if (!sequence.ok) {\n        return sequence;\n      }\n      targets = parseTargets(payload.targets, configResult.config, true, true);\n      if (!targets.ok) {\n        return targets;\n      }\n      message.eventId = payload.eventId;\n      message.sequence = sequence.value;\n      message.targets = targets.value;\n      return { ok: true, message: message };\n    }\n    if (payload.command === 'set_baseline') {\n      sequence = normalizedSequence(payload.sequence);\n      if (!sequence.ok) {\n        return sequence;\n      }\n      targets = parseTargets(payload.targets, configResult.config, false, false);\n      if (!targets.ok) {\n        return targets;\n      }\n      message.sequence = sequence.value;\n      message.targets = targets.value;\n      return { ok: true, message: message };\n    }\n    if (payload.command === 'stop') {\n      if (payload.eventId !== undefined && payload.eventId !== null) {\n        if (typeof payload.eventId !== 'string' || isBlankString(payload.eventId)) {\n          return fail('missing_event_id', 'Event ID must be non-empty when supplied.');\n        }\n        if (payload.eventId.length > ns.MAX_IDENTIFIER_LENGTH) {\n          return fail('identifier_too_long', 'Event ID exceeds the maximum length.');\n        }\n        message.eventId = payload.eventId;\n      }\n      if (payload.sequence !== undefined) {\n        sequence = normalizedSequence(payload.sequence);\n        if (!sequence.ok) {\n          return sequence;\n        }\n        message.sequence = sequence.value;\n      }\n      if (payload.targets !== undefined) {\n        targets = parseTargets(payload.targets, configResult.config, false, false);\n        if (!targets.ok) {\n          return targets;\n        }\n        message.targets = targets.value;\n      }\n      if (message.eventId === null && message.targets.length === 0) {\n        return fail('missing_stop_selector', 'Stop requires an event ID or one or more targets.');\n      }\n      return { ok: true, message: message };\n    }\n    if (payload.targets !== undefined) {\n      targets = parseTargets(payload.targets, configResult.config, false, false);\n      if (!targets.ok) {\n        return targets;\n      }\n      message.targets = targets.value;\n    }\n    if (payload.sequence !== undefined) {\n      sequence = normalizedSequence(payload.sequence);\n      if (!sequence.ok) {\n        return sequence;\n      }\n      message.sequence = sequence.value;\n    }\n    return { ok: true, message: message };\n  };\n}(XTHB));\n(function (ns) {\n  var hasOwn = Object.prototype.hasOwnProperty;\n\n  function eventKey(source, eventId) {\n    return ns.compositeKey([source, eventId]);\n  }\n\n  function baselineKey(source, part) {\n    return ns.compositeKey([source, part]);\n  }\n\n  function partKey(source, part) {\n    return ns.compositeKey([source, part]);\n  }\n\n  function sourceKey(source) {\n    return ns.compositeKey([source]);\n  }\n\n  function copy(value) {\n    return ns.copyObject(value);\n  }\n\n  function copyOwnMap(value) {\n    var key;\n    var copied = {};\n    for (key in value) {\n      if (hasOwn.call(value, key)) {\n        copied[key] = value[key];\n      }\n    }\n    return copied;\n  }\n\n  function copyTarget(target) {\n    var key;\n    var copied = {};\n    for (key in target) {\n      if (hasOwn.call(target, key)) {\n        copied[key] = target[key];\n      }\n    }\n    if (copied.retrigger !== null && copied.retrigger !== undefined) {\n      copied.retrigger = copyOwnMap(copied.retrigger);\n    }\n    return copied;\n  }\n\n  function copyOwner(owner) {\n    return {\n      eventKeys: copyOwnMap(owner.eventKeys),\n      adaptiveEventKey: owner.adaptiveEventKey,\n      adaptiveGeneration: owner.adaptiveGeneration\n    };\n  }\n\n  function addPart(parts, part) {\n    if (parts.indexOf(part) === -1) {\n      parts.push(part);\n    }\n  }\n\n  function addEntryParts(parts, entries) {\n    var index;\n    for (index = 0; index < entries.length; index += 1) {\n      addPart(parts, entries[index].target.part);\n    }\n  }\n\n  function targetParts(targets) {\n    var index;\n    var parts = [];\n    for (index = 0; index < targets.length; index += 1) {\n      addPart(parts, targets[index].part);\n    }\n    return parts;\n  }\n\n  function snapshot(baseline, events, generation) {\n    return {\n      baseline: copy(baseline),\n      events: copy(events),\n      generation: generation\n    };\n  }\n\n  function createEventEntries(message, nowMs, nextGeneration) {\n    var index;\n    var entries = [];\n    for (index = 0; index < message.targets.length; index += 1) {\n      entries.push({\n        source: message.source,\n        eventId: message.eventId,\n        sequence: message.sequence,\n        acceptedAt: nowMs,\n        expiresAt: nowMs + message.targets[index].durationMs,\n        generation: nextGeneration,\n        target: copyTarget(message.targets[index]),\n        cadence: null\n      });\n    }\n    return entries;\n  }\n\n  function createBaselineEntry(message, target) {\n    return {\n      source: message.source,\n      sequence: message.sequence,\n      target: copyTarget(target)\n    };\n  }\n\n  ns.createStateEngine = function () {\n    var baseline = {};\n    var events = {};\n    var baselineSequences = {};\n    var cadenceRecords = {};\n    var partOwners = {};\n    var generation = 0;\n    var engine = {};\n\n    function publish(nextBaseline, nextEvents, nextBaselineSequences,\n        nextCadenceRecords, nextPartOwners, nextGeneration) {\n      baseline = nextBaseline;\n      events = nextEvents;\n      baselineSequences = nextBaselineSequences;\n      cadenceRecords = nextCadenceRecords;\n      partOwners = nextPartOwners;\n      generation = nextGeneration;\n      engine.baseline = baseline;\n      engine.events = events;\n    }\n\n    function result(changed, parts, nextBaseline, nextEvents, nextGeneration, ignoredReason, includeSnapshot) {\n      var value = {\n        changed: changed,\n        changedParts: parts,\n        ignoredReason: ignoredReason || null,\n        rejected: null\n      };\n      if (includeSnapshot) {\n        value.snapshot = snapshot(nextBaseline, nextEvents, nextGeneration);\n      }\n      return value;\n    }\n\n    function capacityResult(detail, includeSnapshot) {\n      var value = {\n        changed: false,\n        changedParts: [],\n        ignoredReason: null,\n        rejected: {\n          code: 'state_capacity_exceeded',\n          detail: detail\n        }\n      };\n      if (includeSnapshot) {\n        value.snapshot = snapshot(baseline, events, generation);\n      }\n      return value;\n    }\n\n    function hasActiveEntry(entries, nowMs) {\n      var index;\n      for (index = 0; index < entries.length; index += 1) {\n        if (entries[index].expiresAt > nowMs) {\n          return true;\n        }\n      }\n      return false;\n    }\n\n    function activeEventCounts(candidateEvents, nowMs) {\n      var key;\n      var entries;\n      var index;\n      var activeTargets;\n      var eventCount = 0;\n      var targetCount = 0;\n      for (key in candidateEvents) {\n        if (hasOwn.call(candidateEvents, key)) {\n          entries = candidateEvents[key];\n          activeTargets = 0;\n          for (index = 0; index < entries.length; index += 1) {\n            if (entries[index].expiresAt > nowMs) {\n              activeTargets += 1;\n            }\n          }\n          if (activeTargets > 0) {\n            eventCount += 1;\n            targetCount += activeTargets;\n          }\n        }\n      }\n      return { events: eventCount, targets: targetCount };\n    }\n\n    function ownKeyCount(value) {\n      var key;\n      var count = 0;\n      for (key in value) {\n        if (hasOwn.call(value, key)) {\n          count += 1;\n        }\n      }\n      return count;\n    }\n\n    function ownerForWrite(candidateOwners, copiedOwners, key) {\n      if (!hasOwn.call(candidateOwners, key)) {\n        candidateOwners[key] = {\n          eventKeys: {},\n          adaptiveEventKey: null,\n          adaptiveGeneration: null\n        };\n        copiedOwners[key] = true;\n      } else if (!hasOwn.call(copiedOwners, key)) {\n        candidateOwners[key] = copyOwner(candidateOwners[key]);\n        copiedOwners[key] = true;\n      }\n      return candidateOwners[key];\n    }\n\n    function hasPartEntry(entries, source, part, adaptiveOnly) {\n      var index;\n      for (index = 0; index < entries.length; index += 1) {\n        if (entries[index].source === source && entries[index].target.part === part &&\n            (!adaptiveOnly || entries[index].target.retrigger !== null)) {\n          return true;\n        }\n      }\n      return false;\n    }\n\n    function removeEntryOwnership(candidateOwners, copiedOwners, key,\n        removedEntries, keptEntries) {\n      var index;\n      var entry;\n      var keyForPart;\n      var owner;\n      var seen = {};\n      var seenKey;\n      for (index = 0; index < removedEntries.length; index += 1) {\n        entry = removedEntries[index];\n        keyForPart = partKey(entry.source, entry.target.part);\n        seenKey = ns.compositeKey([\n          entry.source, entry.target.part, entry.generation\n        ]);\n        if (hasOwn.call(seen, seenKey)) {\n          continue;\n        }\n        seen[seenKey] = true;\n        if (!hasOwn.call(candidateOwners, keyForPart)) {\n          continue;\n        }\n        owner = candidateOwners[keyForPart];\n        if (owner.eventKeys[key] === entry.generation &&\n            !hasPartEntry(keptEntries, entry.source, entry.target.part, false)) {\n          owner = ownerForWrite(candidateOwners, copiedOwners, keyForPart);\n          delete owner.eventKeys[key];\n        }\n        if (owner.adaptiveEventKey === key &&\n            owner.adaptiveGeneration === entry.generation &&\n            !hasPartEntry(keptEntries, entry.source, entry.target.part, true)) {\n          owner = ownerForWrite(candidateOwners, copiedOwners, keyForPart);\n          owner.adaptiveEventKey = null;\n          owner.adaptiveGeneration = null;\n        }\n        if (ownKeyCount(owner.eventKeys) === 0) {\n          delete candidateOwners[keyForPart];\n          delete copiedOwners[keyForPart];\n        }\n      }\n    }\n\n    function addEntryOwnership(candidateOwners, copiedOwners, key, entry) {\n      var keyForPart = partKey(entry.source, entry.target.part);\n      var owner = ownerForWrite(candidateOwners, copiedOwners, keyForPart);\n      owner.eventKeys[key] = entry.generation;\n      if (entry.target.retrigger !== null) {\n        owner.adaptiveEventKey = key;\n        owner.adaptiveGeneration = entry.generation;\n      }\n    }\n\n    function supersedePart(candidateEvents, candidateOwners, copiedOwners,\n        source, part, incomingKey, parts) {\n      var keyForPart = partKey(source, part);\n      var owner = candidateOwners[keyForPart];\n      var ownedEventKey;\n      var entries;\n      var keptEntries;\n      var removedEntries;\n      var index;\n      if (owner === undefined) {\n        return;\n      }\n      for (ownedEventKey in owner.eventKeys) {\n        if (hasOwn.call(owner.eventKeys, ownedEventKey) &&\n            ownedEventKey !== incomingKey &&\n            hasOwn.call(candidateEvents, ownedEventKey)) {\n          entries = candidateEvents[ownedEventKey];\n          keptEntries = [];\n          removedEntries = [];\n          for (index = 0; index < entries.length; index += 1) {\n            if (entries[index].source === source &&\n                entries[index].target.part === part) {\n              removedEntries.push(entries[index]);\n            } else {\n              keptEntries.push(entries[index]);\n            }\n          }\n          if (removedEntries.length > 0) {\n            addPart(parts, part);\n            if (keptEntries.length === 0) {\n              delete candidateEvents[ownedEventKey];\n            } else {\n              candidateEvents[ownedEventKey] = keptEntries;\n            }\n            removeEntryOwnership(candidateOwners, copiedOwners, ownedEventKey,\n              removedEntries, keptEntries);\n          }\n        }\n      }\n    }\n\n    function pruneExpiredOwner(candidateEvents, candidateOwners, copiedOwners,\n        ownerKey, nowMs, parts) {\n      var owner = candidateOwners[ownerKey];\n      var ownedEventKey;\n      var entries;\n      var keptEntries;\n      var removedEntries;\n      var index;\n      if (owner === undefined) {\n        return;\n      }\n      for (ownedEventKey in owner.eventKeys) {\n        if (hasOwn.call(owner.eventKeys, ownedEventKey) &&\n            hasOwn.call(candidateEvents, ownedEventKey)) {\n          entries = candidateEvents[ownedEventKey];\n          keptEntries = [];\n          removedEntries = [];\n          for (index = 0; index < entries.length; index += 1) {\n            if (partKey(entries[index].source, entries[index].target.part) === ownerKey &&\n                entries[index].expiresAt <= nowMs) {\n              removedEntries.push(entries[index]);\n            } else {\n              keptEntries.push(entries[index]);\n            }\n          }\n          if (removedEntries.length > 0) {\n            addEntryParts(parts, removedEntries);\n            if (keptEntries.length === 0) {\n              delete candidateEvents[ownedEventKey];\n            } else {\n              candidateEvents[ownedEventKey] = keptEntries;\n            }\n            removeEntryOwnership(candidateOwners, copiedOwners, ownedEventKey,\n              removedEntries, keptEntries);\n          }\n        }\n      }\n    }\n\n    function pruneExpiredEntries(candidateEvents, candidateOwners, copiedOwners,\n        nowMs, parts) {\n      var ownerKey;\n      var ownerKeys = [];\n      var index;\n      for (ownerKey in candidateOwners) {\n        if (hasOwn.call(candidateOwners, ownerKey)) {\n          ownerKeys.push(ownerKey);\n        }\n      }\n      for (index = 0; index < ownerKeys.length; index += 1) {\n        pruneExpiredOwner(candidateEvents, candidateOwners, copiedOwners,\n          ownerKeys[index], nowMs, parts);\n      }\n    }\n\n    function cleanQuietCadence(records, nowMs) {\n      var key;\n      var record;\n      var nextRecords = records;\n      var copied = false;\n      for (key in records) {\n        if (hasOwn.call(records, key)) {\n          record = records[key];\n          if (nowMs - record.lastAttackAt >= record.quietResetMs) {\n            if (!copied) {\n              nextRecords = copyOwnMap(records);\n              copied = true;\n            }\n            delete nextRecords[key];\n          }\n        }\n      }\n      return nextRecords;\n    }\n\n    function oldestInactiveCadenceKey(records, owners) {\n      var key;\n      var owner;\n      var oldestKey = null;\n      var oldestAt = null;\n      for (key in records) {\n        if (hasOwn.call(records, key)) {\n          owner = owners[key];\n          if (owner === undefined || owner.adaptiveEventKey === null) {\n            if (oldestKey === null || records[key].lastAttackAt < oldestAt ||\n                (records[key].lastAttackAt === oldestAt && key < oldestKey)) {\n              oldestKey = key;\n              oldestAt = records[key].lastAttackAt;\n            }\n          }\n        }\n      }\n      return oldestKey;\n    }\n\n    function applyEvent(message, nowMs, dryRun) {\n      var key = eventKey(message.source, message.eventId);\n      var current = events[key];\n      var nextEvents;\n      var nextEntries;\n      var nextCadenceRecords;\n      var nextPartOwners;\n      var copiedOwners = {};\n      var cadenceCopied;\n      var keyForPart;\n      var previousCadence;\n      var nextCadence;\n      var evictionKey;\n      var counts;\n      var parts = [];\n      var nextGeneration;\n      var index;\n\n      if (message.command === 'update' &&\n          (!hasOwn.call(events, key) || !hasActiveEntry(current, nowMs))) {\n        return result(false, [], baseline, events, generation, 'absent_event', dryRun);\n      }\n      if (hasOwn.call(events, key) && message.sequence <= current[0].sequence) {\n        return result(false, [], baseline, events, generation, null, dryRun);\n      }\n      nextGeneration = generation + 1;\n      nextEntries = createEventEntries(message, nowMs, nextGeneration);\n      nextEvents = copyOwnMap(events);\n      nextPartOwners = copyOwnMap(partOwners);\n      pruneExpiredEntries(nextEvents, nextPartOwners, copiedOwners,\n        nowMs, parts);\n      nextCadenceRecords = cleanQuietCadence(\n        cadenceRecords, nowMs\n      );\n      cadenceCopied = nextCadenceRecords !== cadenceRecords;\n      if (hasOwn.call(events, key)) {\n        addEntryParts(parts, events[key]);\n        delete nextEvents[key];\n        removeEntryOwnership(nextPartOwners, copiedOwners, key,\n          events[key], []);\n      }\n      addEntryParts(parts, nextEntries);\n\n      for (index = 0; index < nextEntries.length; index += 1) {\n        if (nextEntries[index].target.retrigger !== null) {\n          keyForPart = partKey(message.source, nextEntries[index].target.part);\n          supersedePart(nextEvents, nextPartOwners, copiedOwners,\n            message.source, nextEntries[index].target.part, key, parts);\n          if (!hasOwn.call(nextCadenceRecords, keyForPart) &&\n              ownKeyCount(nextCadenceRecords) >= ns.MAX_CADENCE_RECORDS) {\n            evictionKey = oldestInactiveCadenceKey(\n              nextCadenceRecords, nextPartOwners\n            );\n            if (evictionKey === null) {\n              return capacityResult('Cadence record limit exceeded.', dryRun);\n            }\n            if (!cadenceCopied) {\n              nextCadenceRecords = copyOwnMap(nextCadenceRecords);\n              cadenceCopied = true;\n            }\n            delete nextCadenceRecords[evictionKey];\n          }\n          previousCadence = hasOwn.call(nextCadenceRecords, keyForPart)\n            ? nextCadenceRecords[keyForPart]\n            : null;\n          nextCadence = ns.nextCadence(previousCadence,\n            nextEntries[index].target, nowMs, nextGeneration);\n          if (!cadenceCopied) {\n            nextCadenceRecords = copyOwnMap(nextCadenceRecords);\n            cadenceCopied = true;\n          }\n          nextCadenceRecords[keyForPart] = nextCadence;\n          nextEntries[index].cadence = nextCadence;\n        }\n        addEntryOwnership(nextPartOwners, copiedOwners, key,\n          nextEntries[index]);\n      }\n      nextEvents[key] = nextEntries;\n      counts = activeEventCounts(nextEvents, nowMs);\n      if (counts.events > ns.MAX_ACTIVE_EVENTS) {\n        return capacityResult('Active event identity limit exceeded.', dryRun);\n      }\n      if (counts.targets > ns.MAX_ACTIVE_EVENT_TARGETS) {\n        return capacityResult('Active event target limit exceeded.', dryRun);\n      }\n      if (!dryRun) {\n        publish(baseline, nextEvents, baselineSequences,\n          nextCadenceRecords, nextPartOwners, nextGeneration);\n      }\n      return result(true, parts, baseline, nextEvents, nextGeneration, null, dryRun);\n    }\n\n    function applyStop(message, dryRun) {\n      var key;\n      var nextEvents = events;\n      var nextPartOwners = partOwners;\n      var copiedOwners = {};\n      var parts = [];\n      var requestedParts = targetParts(message.targets);\n      var eventEntries;\n      var keptEntries;\n      var removedEntries;\n      var entryChanged;\n      var index;\n      var changed = false;\n      var nextGeneration;\n\n      function retainRequested(entries) {\n        var retained = [];\n        var retainedIndex;\n        removedEntries = [];\n        entryChanged = false;\n        for (retainedIndex = 0; retainedIndex < entries.length; retainedIndex += 1) {\n          if (requestedParts.indexOf(entries[retainedIndex].target.part) !== -1) {\n            addPart(parts, entries[retainedIndex].target.part);\n            removedEntries.push(entries[retainedIndex]);\n            entryChanged = true;\n          } else {\n            retained.push(entries[retainedIndex]);\n          }\n        }\n        return retained;\n      }\n\n      if (message.eventId !== null) {\n        key = eventKey(message.source, message.eventId);\n        if (hasOwn.call(events, key)) {\n          eventEntries = events[key];\n          if (requestedParts.length === 0) {\n            nextEvents = copyOwnMap(events);\n            nextPartOwners = copyOwnMap(partOwners);\n            addEntryParts(parts, eventEntries);\n            delete nextEvents[key];\n            removeEntryOwnership(nextPartOwners, copiedOwners, key,\n              eventEntries, []);\n            changed = true;\n          } else {\n            keptEntries = retainRequested(eventEntries);\n            if (entryChanged) {\n              nextEvents = copyOwnMap(events);\n              nextPartOwners = copyOwnMap(partOwners);\n              if (keptEntries.length === 0) {\n                delete nextEvents[key];\n              } else {\n                nextEvents[key] = keptEntries;\n              }\n              removeEntryOwnership(nextPartOwners, copiedOwners, key,\n                removedEntries, keptEntries);\n              changed = true;\n            }\n          }\n        }\n      } else {\n        for (key in events) {\n          if (hasOwn.call(events, key)) {\n            eventEntries = events[key];\n            if (eventEntries[0].source === message.source) {\n              keptEntries = retainRequested(eventEntries);\n              if (entryChanged) {\n                if (!changed) {\n                  nextEvents = copyOwnMap(events);\n                  nextPartOwners = copyOwnMap(partOwners);\n                }\n                if (keptEntries.length === 0) {\n                  delete nextEvents[key];\n                } else {\n                  nextEvents[key] = keptEntries;\n                }\n                removeEntryOwnership(nextPartOwners, copiedOwners, key,\n                  removedEntries, keptEntries);\n                changed = true;\n              }\n            }\n          }\n        }\n      }\n      nextGeneration = changed ? generation + 1 : generation;\n      if (changed && !dryRun) {\n        publish(baseline, nextEvents, baselineSequences,\n          cadenceRecords, nextPartOwners, nextGeneration);\n      }\n      return result(changed, parts, baseline, nextEvents, nextGeneration, null, dryRun);\n    }\n\n    function applyBaseline(message, dryRun) {\n      var sequenceKey = sourceKey(message.source);\n      var currentSequence = baselineSequences[sequenceKey];\n      var nextBaseline;\n      var nextSequences;\n      var key;\n      var index;\n      var parts = [];\n      var changed = false;\n      var nextGeneration;\n\n      if (hasOwn.call(baselineSequences, sequenceKey) && message.sequence <= currentSequence) {\n        return result(false, [], baseline, events, generation, null, dryRun);\n      }\n      nextBaseline = copyOwnMap(baseline);\n      nextSequences = copyOwnMap(baselineSequences);\n      for (key in baseline) {\n        if (hasOwn.call(baseline, key) && baseline[key].source === message.source) {\n          addPart(parts, baseline[key].target.part);\n          delete nextBaseline[key];\n          changed = true;\n        }\n      }\n      for (index = 0; index < message.targets.length; index += 1) {\n        key = baselineKey(message.source, message.targets[index].part);\n        nextBaseline[key] = createBaselineEntry(message, message.targets[index]);\n        addPart(parts, message.targets[index].part);\n        changed = true;\n      }\n      nextSequences[sequenceKey] = message.sequence;\n      if (ownKeyCount(nextSequences) > ns.MAX_BASELINE_SOURCES) {\n        return capacityResult('Baseline source limit exceeded.', dryRun);\n      }\n      if (ownKeyCount(nextBaseline) > ns.MAX_BASELINE_TARGETS) {\n        return capacityResult('Baseline target limit exceeded.', dryRun);\n      }\n      nextGeneration = changed ? generation + 1 : generation;\n      if (!dryRun) {\n        publish(nextBaseline, events, nextSequences,\n          cadenceRecords, partOwners, nextGeneration);\n      }\n      return result(changed, parts, nextBaseline, events, nextGeneration, null, dryRun);\n    }\n\n    function applyTest(message, nowMs) {\n      var nextEvents = events;\n      var nextGeneration = generation;\n      var entries;\n      if (message.targets.length > 0) {\n        nextGeneration += 1;\n        entries = createEventEntries(message, nowMs, nextGeneration);\n        nextEvents = copyOwnMap(events);\n        nextEvents[ns.compositeKey(['preview', message.source, nextGeneration])] = entries;\n      }\n      return result(false, targetParts(message.targets), baseline, nextEvents, nextGeneration, null, true);\n    }\n\n    engine.baseline = baseline;\n    engine.events = events;\n    engine.snapshot = function () {\n      return snapshot(baseline, events, generation);\n    };\n    engine.hapticSnapshot = function () {\n      return copy({\n        cadenceRecords: cadenceRecords,\n        partOwners: partOwners\n      });\n    };\n    engine.readState = function () {\n      /* Internal read-only view. Callers must never mutate retained maps or entries. */\n      return { baseline: baseline, events: events, generation: generation };\n    };\n    engine.clearAll = function (dryRun) {\n      var nextGeneration = generation + 1;\n      var parts = [];\n      var key;\n      for (key in baseline) {\n        if (hasOwn.call(baseline, key)) {\n          addPart(parts, baseline[key].target.part);\n        }\n      }\n      for (key in events) {\n        if (hasOwn.call(events, key)) {\n          addEntryParts(parts, events[key]);\n        }\n      }\n      if (!dryRun) {\n        publish({}, {}, baselineSequences, {}, {}, nextGeneration);\n      }\n      return result(true, parts, {}, {}, nextGeneration, null, dryRun === true);\n    };\n    engine.applyMessage = function (message, nowMs, dryRun) {\n      if (message.command === 'play' || message.command === 'update') {\n        return applyEvent(message, nowMs, dryRun === true);\n      }\n      if (message.command === 'stop') {\n        return applyStop(message, dryRun === true);\n      }\n      if (message.command === 'set_baseline') {\n        return applyBaseline(message, dryRun === true);\n      }\n      if (message.command === 'stop_all') {\n        return engine.clearAll(dryRun === true);\n      }\n      if (message.command === 'test') {\n        return applyTest(message, nowMs);\n      }\n      return result(false, [], baseline, events, generation, null, dryRun === true);\n    };\n    engine.expire = function (nowMs, dryRun) {\n      var nextEvents;\n      var nextPartOwners;\n      var nextCadenceRecords;\n      var copiedOwners = {};\n      var key;\n      var index;\n      var entries;\n      var keptEntries;\n      var removedEntries;\n      var entryChanged;\n      var parts = [];\n      var changed = false;\n      var nextGeneration;\n\n      for (key in events) {\n        if (hasOwn.call(events, key)) {\n          entries = events[key];\n          for (index = 0; index < entries.length; index += 1) {\n            if (entries[index].expiresAt <= nowMs) {\n              changed = true;\n              break;\n            }\n          }\n          if (changed) {\n            break;\n          }\n        }\n      }\n      if (!changed) {\n        nextCadenceRecords = cleanQuietCadence(\n          cadenceRecords, nowMs\n        );\n        if (nextCadenceRecords !== cadenceRecords && dryRun !== true) {\n          publish(baseline, events, baselineSequences,\n            nextCadenceRecords, partOwners, generation);\n        }\n        return result(false, [], baseline, events, generation, null, dryRun === true);\n      }\n\n      nextEvents = copyOwnMap(events);\n      nextPartOwners = copyOwnMap(partOwners);\n      for (key in events) {\n        if (hasOwn.call(events, key)) {\n          entries = events[key];\n          entryChanged = false;\n          for (index = 0; index < entries.length; index += 1) {\n            if (entries[index].expiresAt <= nowMs) {\n              entryChanged = true;\n              break;\n            }\n          }\n          if (entryChanged) {\n            keptEntries = [];\n            removedEntries = [];\n            for (index = 0; index < entries.length; index += 1) {\n              if (entries[index].expiresAt <= nowMs) {\n                addPart(parts, entries[index].target.part);\n                removedEntries.push(entries[index]);\n              } else {\n                keptEntries.push(entries[index]);\n              }\n            }\n            if (keptEntries.length === 0) {\n              delete nextEvents[key];\n            } else {\n              nextEvents[key] = keptEntries;\n            }\n            removeEntryOwnership(nextPartOwners, copiedOwners, key,\n              removedEntries, keptEntries);\n          }\n        }\n      }\n      nextCadenceRecords = cleanQuietCadence(\n        cadenceRecords, nowMs\n      );\n      nextGeneration = generation + 1;\n      if (dryRun !== true) {\n        publish(baseline, nextEvents, baselineSequences,\n          nextCadenceRecords, nextPartOwners, nextGeneration);\n      }\n      return result(true, parts, baseline, nextEvents, nextGeneration, null, dryRun === true);\n    };\n    return engine;\n  };\n}(XTHB));\n(function (ns) {\n  ns.MODULE_HAPTICS = true;\n\n  ns.nextCadence = function (previous, target, nowMs, generation) {\n    var interval;\n    var average;\n    var mode = 'single';\n    var textureStartedAt = null;\n    if (previous !== null && nowMs - previous.lastAttackAt < target.retrigger.quietResetMs) {\n      interval = nowMs - previous.lastAttackAt;\n      average = previous.averageInterval === null\n        ? interval\n        : previous.averageInterval * 0.75 + interval * 0.25;\n      mode = average < target.retrigger.textureThresholdMs ? 'texture' : 'adaptive';\n      textureStartedAt = mode === 'texture'\n        ? (previous.mode === 'texture' ? previous.textureStartedAt : nowMs)\n        : null;\n    } else {\n      average = null;\n    }\n    return {\n      lastAttackAt: nowMs,\n      averageInterval: average,\n      mode: mode,\n      lastGeneration: generation,\n      textureStartedAt: textureStartedAt,\n      quietResetMs: target.retrigger.quietResetMs\n    };\n  };\n\n  ns.envelopePlan = function (target, cadence) {\n    var profile = target.retrigger;\n    var ratio = cadence.averageInterval === null ? 1 : ns.clamp(\n      (cadence.averageInterval - profile.textureThresholdMs) /\n        (profile.quietResetMs - profile.textureThresholdMs), 0, 1);\n    var desiredFall = profile.minRampDownMs +\n      (target.rampDownMs - profile.minRampDownMs) * ratio;\n    var desiredRise = profile.minRampUpMs +\n      (target.rampUpMs - profile.minRampUpMs) * ratio;\n    var minimumTotal = profile.minRampDownMs + profile.minRampUpMs;\n    var available = target.durationMs - ns.SCHEDULER_INTERVAL_MS;\n    var desiredTotal = desiredFall + desiredRise;\n    var fit;\n    if (desiredTotal > available && desiredTotal > minimumTotal) {\n      fit = (available - minimumTotal) / (desiredTotal - minimumTotal);\n      desiredFall = profile.minRampDownMs +\n        (desiredFall - profile.minRampDownMs) * fit;\n      desiredRise = profile.minRampUpMs +\n        (desiredRise - profile.minRampUpMs) * fit;\n    }\n    return {\n      mode: cadence.mode,\n      dropPercent: profile.minDropPercent +\n        (profile.maxDropPercent - profile.minDropPercent) * ratio,\n      fallMs: desiredFall,\n      riseMs: desiredRise\n    };\n  };\n\n  ns.hapticFloor = function (baselineValue, targetValue, blend, dropPercent) {\n    var anchor = blend === 'replace' ? 0 : baselineValue;\n    return ns.clamp(anchor + (targetValue - anchor) *\n      (1 - dropPercent / 100), 0, 100);\n  };\n\n  ns.textureTargetPhase = function (cadence, nowMs) {\n    var period = Math.max(200, 2 * cadence.averageInterval);\n    var elapsed = nowMs - cadence.textureStartedAt;\n    return elapsed < 0 || elapsed % period < period / 2;\n  };\n}(XTHB));\n(function (ns) {\n  var hasOwn = Object.prototype.hasOwnProperty;\n\n  function ownValues(object) {\n    var key;\n    var values = [];\n    for (key in object) {\n      if (hasOwn.call(object, key)) {\n        values.push(object[key]);\n      }\n    }\n    return values;\n  }\n\n  function targetValue(target, type) {\n    if (type === 'rotation') {\n      return target.rotateSpeed;\n    }\n    return target.intensity;\n  }\n\n  function hasActuator(target, type) {\n    if (type === 'rotation' && target.hasRotateSpeed === false) {\n      return false;\n    }\n    if (type === 'intensity' && target.hasIntensity === false) {\n      return false;\n    }\n    return typeof targetValue(target, type) === 'number' && isFinite(targetValue(target, type));\n  }\n\n  function expandedParts(target, groups) {\n    var parts = [];\n    var leaf;\n    if (hasOwn.call(groups, target.part)) {\n      for (leaf in groups[target.part]) {\n        if (hasOwn.call(groups[target.part], leaf)) {\n          parts.push({ part: leaf, weight: groups[target.part][leaf] });\n        }\n      }\n      return parts;\n    }\n    parts.push({ part: target.part, weight: 1 });\n    return parts;\n  }\n\n  function contributionIdentity(entry, kind, leafPart) {\n    var eventId = entry.eventId === undefined || entry.eventId === null ? '' : entry.eventId;\n    return ns.compositeKey([\n      kind, entry.source || '', eventId, entry.target.part, leafPart\n    ]);\n  }\n\n  function candidate(entry, type, routeWeight, groupWeight, multiplier, identity) {\n    var raw = targetValue(entry.target, type);\n    return {\n      entry: entry,\n      effectiveValue: ns.clamp(raw * groupWeight * routeWeight * multiplier, 0, 100),\n      identity: identity\n    };\n  }\n\n  function betterBaseline(next, current) {\n    if (current === null || next.effectiveValue > current.effectiveValue) {\n      return true;\n    }\n    return next.effectiveValue === current.effectiveValue && next.identity < current.identity;\n  }\n\n  function newerTransient(next, current) {\n    var nextTarget = next.entry.target;\n    var currentTarget;\n    if (current === null) {\n      return true;\n    }\n    currentTarget = current.entry.target;\n    if (nextTarget.priority !== currentTarget.priority) {\n      return nextTarget.priority > currentTarget.priority;\n    }\n    if (next.effectiveValue !== current.effectiveValue) {\n      return next.effectiveValue > current.effectiveValue;\n    }\n    if (next.entry.sequence !== current.entry.sequence) {\n      return next.entry.sequence > current.entry.sequence;\n    }\n    if (next.entry.acceptedAt !== current.entry.acceptedAt) {\n      return next.entry.acceptedAt > current.entry.acceptedAt;\n    }\n    if (next.entry.generation !== current.entry.generation) {\n      return next.entry.generation > current.entry.generation;\n    }\n    return next.identity < current.identity;\n  }\n\n  function newerForeground(next, current) {\n    if (current === null) {\n      return true;\n    }\n    if (next.entry.acceptedAt !== current.entry.acceptedAt) {\n      return next.entry.acceptedAt > current.entry.acceptedAt;\n    }\n    if (next.entry.generation !== current.entry.generation) {\n      return next.entry.generation > current.entry.generation;\n    }\n    return next.identity < current.identity;\n  }\n\n  function pulseIsOn(entry, nowMs) {\n    var target = entry.target;\n    var elapsed;\n    var period;\n    if (target.effect !== 'pulse') {\n      return true;\n    }\n    if (target.pulseOnMs <= 0) {\n      return false;\n    }\n    if (target.pulseOffMs <= 0) {\n      return true;\n    }\n    elapsed = nowMs - entry.acceptedAt;\n    if (elapsed < 0) {\n      return true;\n    }\n    period = target.pulseOnMs + target.pulseOffMs;\n    return elapsed % period < target.pulseOnMs;\n  }\n\n  function retriggerMetadata(retrigger) {\n    if (retrigger === null) {\n      return null;\n    }\n    return {\n      mode: retrigger.mode,\n      minDropPercent: retrigger.minDropPercent,\n      maxDropPercent: retrigger.maxDropPercent,\n      minRampUpMs: retrigger.minRampUpMs,\n      minRampDownMs: retrigger.minRampDownMs,\n      textureThresholdMs: retrigger.textureThresholdMs,\n      quietResetMs: retrigger.quietResetMs\n    };\n  }\n\n  function targetMetadata(target) {\n    return {\n      part: target.part,\n      effect: target.effect,\n      intensity: target.intensity,\n      hasIntensity: target.hasIntensity,\n      frequency: target.frequency,\n      hasFrequency: target.hasFrequency,\n      rotateSpeed: target.rotateSpeed,\n      hasRotateSpeed: target.hasRotateSpeed,\n      rotateDirection: target.rotateDirection,\n      durationMs: target.durationMs,\n      rampUpMs: target.rampUpMs,\n      rampDownMs: target.rampDownMs,\n      pulseOnMs: target.pulseOnMs,\n      pulseOffMs: target.pulseOffMs,\n      priority: target.priority,\n      blend: target.blend,\n      baselineBlend: target.baselineBlend,\n      retrigger: retriggerMetadata(target.retrigger)\n    };\n  }\n\n  function cadenceMetadata(cadence) {\n    if (cadence === null) {\n      return null;\n    }\n    return {\n      lastAttackAt: cadence.lastAttackAt,\n      averageInterval: cadence.averageInterval,\n      mode: cadence.mode,\n      lastGeneration: cadence.lastGeneration,\n      textureStartedAt: cadence.textureStartedAt,\n      quietResetMs: cadence.quietResetMs\n    };\n  }\n\n  function winnerMetadata(winner) {\n    var entry;\n    var metadata;\n    if (winner === null) {\n      return null;\n    }\n    entry = winner.entry;\n    metadata = {\n      source: entry.source,\n      sequence: entry.sequence,\n      target: targetMetadata(entry.target)\n    };\n    if (hasOwn.call(entry, 'eventId')) {\n      metadata.eventId = entry.eventId;\n    }\n    if (hasOwn.call(entry, 'acceptedAt')) {\n      metadata.acceptedAt = entry.acceptedAt;\n    }\n    if (hasOwn.call(entry, 'expiresAt')) {\n      metadata.expiresAt = entry.expiresAt;\n    }\n    if (hasOwn.call(entry, 'generation')) {\n      metadata.generation = entry.generation;\n    }\n    if (hasOwn.call(entry, 'cadence')) {\n      metadata.cadence = cadenceMetadata(entry.cadence);\n    }\n    return metadata;\n  }\n\n  function outputForSlot(slot, snapshot, nowMs) {\n    var baselineWinner = null;\n    var ordinaryTransientWinner = null;\n    var foregroundWinner = null;\n    var transientWinner;\n    var baselineEntries = ownValues(snapshot.baseline || {});\n    var eventLists = ownValues(snapshot.events || {});\n    var listIndex;\n    var entryIndex;\n    var entries;\n    var entry;\n    var expanded;\n    var partIndex;\n    var part;\n    var routeWeight;\n    var next;\n    var activeTransient;\n    var selected;\n    var value = 0;\n    var direction = null;\n    var frequency = 0;\n    var baselineValue = 0;\n    var baselineFrequency = 0;\n    var baselineDirection = null;\n    var rampUpMs = 0;\n    var rampDownMs = 0;\n    var pulseOnMs = 0;\n    var pulseOffMs = 0;\n\n    if (slot.enabled) {\n      for (entryIndex = 0; entryIndex < baselineEntries.length; entryIndex += 1) {\n        entry = baselineEntries[entryIndex];\n        if (hasActuator(entry.target, slot.type)) {\n          expanded = expandedParts(entry.target, snapshot.config.groups);\n          for (partIndex = 0; partIndex < expanded.length; partIndex += 1) {\n            part = expanded[partIndex];\n            routeWeight = slot.routes[part.part];\n            if (routeWeight !== undefined) {\n              next = candidate(entry, slot.type, routeWeight, part.weight, snapshot.config.globalMultiplier,\n                contributionIdentity(entry, 'baseline', part.part));\n              if (betterBaseline(next, baselineWinner)) {\n                baselineWinner = next;\n              }\n            }\n          }\n        }\n      }\n      for (listIndex = 0; listIndex < eventLists.length; listIndex += 1) {\n        entries = eventLists[listIndex];\n        for (entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {\n          entry = entries[entryIndex];\n          if (hasActuator(entry.target, slot.type)) {\n            expanded = expandedParts(entry.target, snapshot.config.groups);\n            for (partIndex = 0; partIndex < expanded.length; partIndex += 1) {\n              part = expanded[partIndex];\n              routeWeight = slot.routes[part.part];\n              if (routeWeight !== undefined) {\n                next = candidate(entry, slot.type, routeWeight, part.weight, snapshot.config.globalMultiplier,\n                  contributionIdentity(entry, 'transient', part.part));\n                if (newerTransient(next, ordinaryTransientWinner)) {\n                  ordinaryTransientWinner = next;\n                }\n                if (entry.target.retrigger !== null && newerForeground(next, foregroundWinner)) {\n                  foregroundWinner = next;\n                }\n              }\n            }\n          }\n        }\n      }\n    }\n\n    transientWinner = foregroundWinner === null ? ordinaryTransientWinner : foregroundWinner;\n    if (baselineWinner !== null) {\n      baselineValue = baselineWinner.effectiveValue;\n      baselineFrequency = slot.frequencyEnabled\n        ? baselineWinner.entry.target.frequency : 0;\n      if (slot.type === 'rotation') {\n        baselineDirection = baselineWinner.entry.target.rotateDirection;\n      }\n    }\n    activeTransient = transientWinner !== null && pulseIsOn(transientWinner.entry, nowMs);\n    if (baselineWinner !== null && activeTransient) {\n      value = ns.mixValue(baselineWinner.effectiveValue, transientWinner.effectiveValue,\n        transientWinner.entry.target.baselineBlend);\n      selected = transientWinner.entry.target;\n    } else if (activeTransient) {\n      value = transientWinner.effectiveValue;\n      selected = transientWinner.entry.target;\n    } else if (baselineWinner !== null) {\n      value = baselineWinner.effectiveValue;\n      selected = baselineWinner.entry.target;\n    } else {\n      selected = null;\n    }\n    if (selected !== null) {\n      if (slot.frequencyEnabled) {\n        frequency = selected.frequency;\n      }\n      if (slot.type === 'rotation') {\n        direction = selected.rotateDirection;\n      }\n      rampUpMs = selected.rampUpMs;\n      rampDownMs = selected.rampDownMs;\n      pulseOnMs = selected.pulseOnMs;\n      pulseOffMs = selected.pulseOffMs;\n    }\n\n    return {\n      id: slot.id,\n      enabled: slot.enabled,\n      type: slot.type,\n      value: value,\n      frequency: frequency,\n      direction: direction,\n      rampUpMs: rampUpMs,\n      rampDownMs: rampDownMs,\n      pulseOnMs: pulseOnMs,\n      pulseOffMs: pulseOffMs,\n      baselineWinner: winnerMetadata(baselineWinner),\n      foregroundWinner: winnerMetadata(foregroundWinner),\n      transientWinner: winnerMetadata(transientWinner),\n      baselineValue: baselineValue,\n      baselineFrequency: baselineFrequency,\n      baselineDirection: baselineDirection,\n      generation: snapshot.generation\n    };\n  }\n\n  ns.mixValue = function (baselineValue, transientValue, blend) {\n    var value;\n    if (blend === 'boost') {\n      value = baselineValue + transientValue * (100 - baselineValue) / 100;\n    } else if (blend === 'max') {\n      value = Math.max(baselineValue, transientValue);\n    } else {\n      value = transientValue;\n    }\n    return ns.clamp(value, 0, 100);\n  };\n\n  ns.computeSlots = function (state, config, nowMs) {\n    var index;\n    var slots = [];\n    var snapshot = {\n      baseline: state.baseline || {},\n      events: state.events || {},\n      generation: state.generation,\n      config: config\n    };\n    for (index = 0; index < config.slots.length; index += 1) {\n      slots.push(outputForSlot(config.slots[index], snapshot, nowMs));\n    }\n    return slots;\n  };\n}(XTHB));\n(function (ns) {\n  function copy(value) {\n    return ns.copyObject(value);\n  }\n\n  function copyTransition(transition) {\n    return { rampSeconds: transition.rampSeconds };\n  }\n\n  function copyTuple(tuple) {\n    return {\n      value: tuple.value,\n      frequency: tuple.frequency,\n      direction: tuple.direction,\n      rampSeconds: tuple.rampSeconds\n    };\n  }\n\n  function copySlot(slot) {\n    /* Winner metadata is a fixed scalar projection owned by this dispatch pass. */\n    return {\n      id: slot.id,\n      enabled: slot.enabled,\n      type: slot.type,\n      value: slot.value,\n      frequency: slot.frequency,\n      direction: slot.direction,\n      rampUpMs: slot.rampUpMs,\n      rampDownMs: slot.rampDownMs,\n      pulseOnMs: slot.pulseOnMs,\n      pulseOffMs: slot.pulseOffMs,\n      baselineWinner: slot.baselineWinner,\n      foregroundWinner: slot.foregroundWinner,\n      transientWinner: slot.transientWinner,\n      baselineValue: slot.baselineValue,\n      baselineFrequency: slot.baselineFrequency,\n      baselineDirection: slot.baselineDirection,\n      generation: slot.generation\n    };\n  }\n\n  function actuatorSlot(slot) {\n    /* The adapter receives only the primitive actuator tuple it owns. */\n    return {\n      id: slot.id,\n      value: slot.value,\n      frequency: slot.frequency,\n      direction: slot.direction\n    };\n  }\n\n  function normalizedDirection(value) {\n    return value === undefined ? null : value;\n  }\n\n  function coreTuple(slot) {\n    return {\n      value: slot.value,\n      frequency: slot.frequency,\n      direction: normalizedDirection(slot.direction)\n    };\n  }\n\n  function sameActuator(left, right) {\n    return left !== undefined &&\n      left.value === right.value &&\n      left.frequency === right.frequency &&\n      left.direction === right.direction;\n  }\n\n  function sameTuple(left, right) {\n    return sameActuator(left, right) && left.rampSeconds === right.rampSeconds;\n  }\n\n  function containsPart(parts, part) {\n    return parts.indexOf(part) !== -1;\n  }\n\n  function sameWinner(left, right) {\n    if (left === null || right === null) {\n      return left === right;\n    }\n    return left.source === right.source &&\n      left.eventId === right.eventId &&\n      left.sequence === right.sequence &&\n      left.generation === right.generation &&\n      left.target.part === right.target.part;\n  }\n\n  function expiryReleased(previous, current, expiredParts) {\n    return previous !== undefined &&\n      previous.transientWinner !== null &&\n      containsPart(expiredParts, previous.transientWinner.target.part) &&\n      !sameWinner(previous.transientWinner, current.transientWinner);\n  }\n\n  function replacementRampSeconds(previous, current, winnerChanged, effectiveRiseMs) {\n    if (current.type === 'rotation' && winnerChanged && current.value > 0) {\n      return ns.clamp(effectiveRiseMs / 1000, 0, 600);\n    }\n    return null;\n  }\n\n  function rampSeconds(previous, current, previousTuple, expiredParts,\n      winnerChanged, effectiveRiseMs) {\n    var previousValue = previous === undefined ? 0 : previous.value;\n    var milliseconds = 0;\n    var currentCore = coreTuple(current);\n    var replacement = replacementRampSeconds(previous, current,\n      winnerChanged, effectiveRiseMs);\n\n    if (replacement !== null) {\n      return replacement;\n    }\n    if (sameActuator(previousTuple, currentCore)) {\n      return previousTuple.rampSeconds;\n    }\n    if (expiryReleased(previous, current, expiredParts)) {\n      milliseconds = previous.rampDownMs;\n    } else if (current.value > previousValue) {\n      milliseconds = current.rampUpMs;\n    } else if (current.value < previousValue && previous !== undefined) {\n      milliseconds = previous.rampDownMs;\n    }\n    return ns.clamp(milliseconds / 1000, 0, 600);\n  }\n\n  ns.createRuntime = function (config, adapter, clock) {\n    var validation = ns.validateConfig(config);\n    var normalizedConfig;\n    var outputAdapter = adapter || {};\n    var now = typeof clock === 'function' ? clock : ns.nowMs;\n    var engine;\n    var lastSlots = {};\n    var lastTuples = {};\n    var slotEnvelopes = {};\n    var runtime = {};\n\n    if (!validation.ok) {\n      throw new Error(validation.code + ': ' + validation.detail);\n    }\n    if (typeof outputAdapter.applySlot !== 'function') {\n      throw new Error('Runtime adapter must provide applySlot.');\n    }\n    normalizedConfig = validation.config;\n    engine = ns.createStateEngine();\n\n    function reportCallError(slotId, error) {\n      if (typeof outputAdapter.log !== 'function') {\n        return;\n      }\n      try {\n        outputAdapter.log({\n          type: 'xtoys_call_error',\n          slotId: slotId,\n          detail: error && error.message !== undefined ? String(error.message) : String(error)\n        });\n      } catch (ignored) {\n        /* Logging cannot block another output slot. */\n      }\n    }\n\n    function apply(slot, transition, force) {\n      var tuple = coreTuple(slot);\n      tuple.rampSeconds = transition.rampSeconds;\n      if (!force && sameTuple(lastTuples[slot.id], tuple)) {\n        lastSlots[slot.id] = copySlot(slot);\n        return { changed: false, completed: true };\n      }\n      try {\n        outputAdapter.applySlot(actuatorSlot(slot), copyTransition(transition));\n      } catch (error) {\n        lastSlots[slot.id] = copySlot(slot);\n        delete lastTuples[slot.id];\n        reportCallError(slot.id, error);\n        return { changed: false, completed: false };\n      }\n      lastTuples[slot.id] = copyTuple(tuple);\n      lastSlots[slot.id] = copySlot(slot);\n      return { changed: true, completed: true };\n    }\n\n    function transitionFor(slot, expiredParts) {\n      var previous = lastSlots[slot.id];\n      var winnerChanged = resolvedWinnerKey(previous) !== resolvedWinnerKey(slot);\n      return {\n        rampSeconds: rampSeconds(previous, slot, lastTuples[slot.id],\n          expiredParts, winnerChanged, slot.rampUpMs)\n      };\n    }\n\n    function foregroundKey(slot) {\n      var winner = slot.foregroundWinner;\n      return winner === null ? null : ns.compositeKey([\n        winner.source, winner.eventId, winner.target.part, winner.generation\n      ]);\n    }\n\n    function resolvedWinnerKey(slot) {\n      if (slot === undefined) {\n        return null;\n      }\n      var kind = slot.transientWinner === null ? 'baseline' : 'transient';\n      var winner = slot.transientWinner === null\n        ? slot.baselineWinner : slot.transientWinner;\n      if (winner === null) {\n        return null;\n      }\n      return ns.compositeKey([\n        kind, winner.source || '', winner.eventId || '', winner.target.part,\n        winner.sequence === undefined ? '' : winner.sequence,\n        winner.generation === undefined ? '' : winner.generation\n      ]);\n    }\n\n    function restoresOlderForeground(previous, winner) {\n      var previousWinner = previous === undefined\n        ? null : previous.foregroundWinner;\n      return previousWinner !== null && !sameWinner(previousWinner, winner) &&\n        winner.generation < previousWinner.generation;\n    }\n\n    function restoredRiseMs(winner, plan, atMs) {\n      var remaining = Math.max(0, winner.expiresAt - atMs);\n      return Math.min(plan.riseMs,\n        Math.max(0, remaining - ns.SCHEDULER_INTERVAL_MS));\n    }\n\n    function prepareHapticSlot(slot, atMs) {\n      var key = foregroundKey(slot);\n      var envelope = slotEnvelopes[slot.id];\n      var previous = lastSlots[slot.id];\n      var winner = slot.foregroundWinner;\n      var winnerChanged = resolvedWinnerKey(previous) !== resolvedWinnerKey(slot);\n      var effectiveRiseMs;\n      var plan;\n      var physical;\n      var targetPhase;\n      var transition;\n      var restored;\n\n      if (key === null) {\n        delete slotEnvelopes[slot.id];\n        return { slot: slot, transition: null, token: null };\n      }\n\n      if (envelope === undefined || envelope.ownerKey !== key) {\n        plan = ns.envelopePlan(winner.target, winner.cadence);\n        restored = restoresOlderForeground(previous, winner);\n        effectiveRiseMs = restored\n          ? restoredRiseMs(winner, plan, atMs) : plan.riseMs;\n        envelope = {\n          ownerKey: key,\n          ownerGeneration: winner.generation,\n          phase: 'rise',\n          riseAt: atMs,\n          floorApplied: true,\n          dropPercent: plan.dropPercent,\n          fallMs: plan.fallMs,\n          riseMs: effectiveRiseMs,\n          textureStartedAt: winner.cadence.mode === 'texture'\n            ? winner.cadence.textureStartedAt : null,\n          restoredOwner: restored\n        };\n        slotEnvelopes[slot.id] = envelope;\n        transition = replacementRampSeconds(previous, slot, winnerChanged,\n          effectiveRiseMs);\n        if (transition !== null) {\n          return {\n            slot: slot,\n            transition: { rampSeconds: transition },\n            token: {\n              slotId: slot.id,\n              ownerKey: key,\n              ownerGeneration: envelope.ownerGeneration,\n              phase: 'target'\n            }\n          };\n        }\n        if (restored) {\n          return {\n            slot: slot,\n            transition: { rampSeconds: envelope.riseMs / 1000 },\n            token: {\n              slotId: slot.id,\n              ownerKey: key,\n              ownerGeneration: envelope.ownerGeneration,\n              phase: 'target'\n            }\n          };\n        }\n        if (winner.cadence.mode === 'texture') {\n          envelope.phase = 'texture';\n        } else if (previous === undefined ||\n            (previous.transientWinner === null &&\n              previous.value === slot.baselineValue)) {\n          return {\n            slot: slot,\n            transition: { rampSeconds: envelope.riseMs / 1000 },\n            token: {\n              slotId: slot.id,\n              ownerKey: key,\n              ownerGeneration: envelope.ownerGeneration,\n              phase: 'target'\n            }\n          };\n        } else {\n          physical = copySlot(slot);\n          physical.value = ns.hapticFloor(slot.baselineValue, slot.value,\n            winner.target.baselineBlend, plan.dropPercent);\n          physical.frequency = slot.baselineFrequency;\n          envelope.phase = 'fall';\n          envelope.riseAt = null;\n          envelope.floorApplied = false;\n          return {\n            slot: physical,\n            transition: { rampSeconds: envelope.fallMs / 1000 },\n            token: {\n              slotId: slot.id,\n              ownerKey: key,\n              ownerGeneration: envelope.ownerGeneration,\n              phase: 'fall'\n            }\n          };\n        }\n      }\n\n      if (winner !== null && winner.cadence.mode === 'texture' &&\n          !(envelope.phase === 'fall' &&\n            (!envelope.floorApplied || atMs < envelope.riseAt))) {\n        envelope.textureStartedAt = winner.cadence.textureStartedAt;\n        targetPhase = ns.textureTargetPhase(winner.cadence, atMs);\n        physical = copySlot(slot);\n        if (!targetPhase) {\n          physical.value = ns.hapticFloor(slot.baselineValue, slot.value,\n            winner.target.baselineBlend,\n            winner.target.retrigger.minDropPercent);\n          physical.frequency = slot.baselineFrequency;\n        }\n        transition = {\n          rampSeconds: (targetPhase\n            ? winner.target.retrigger.minRampUpMs\n            : winner.target.retrigger.minRampDownMs) / 1000\n        };\n        return {\n          slot: physical,\n          transition: transition,\n          token: {\n            slotId: slot.id,\n            ownerKey: key,\n            ownerGeneration: envelope.ownerGeneration,\n            phase: targetPhase ? 'target' : 'floor'\n          }\n        };\n      }\n      if (envelope.phase === 'fall' && envelope.floorApplied &&\n          atMs >= envelope.riseAt) {\n        return {\n          slot: slot,\n          transition: { rampSeconds: envelope.riseMs / 1000 },\n          token: {\n            slotId: slot.id,\n            ownerKey: key,\n            ownerGeneration: envelope.ownerGeneration,\n            phase: 'target'\n          }\n        };\n      }\n      if (envelope.phase === 'fall') {\n        physical = copySlot(slot);\n        physical.value = ns.hapticFloor(slot.baselineValue, slot.value,\n          winner.target.baselineBlend, envelope.dropPercent);\n        physical.frequency = slot.baselineFrequency;\n        return {\n          slot: physical,\n          transition: { rampSeconds: envelope.fallMs / 1000 },\n          token: {\n            slotId: slot.id,\n            ownerKey: key,\n            ownerGeneration: envelope.ownerGeneration,\n            phase: 'fall'\n          }\n        };\n      }\n      return {\n        slot: slot,\n        transition: { rampSeconds: envelope.riseMs / 1000 },\n        token: {\n          slotId: slot.id,\n          ownerKey: key,\n          ownerGeneration: envelope.ownerGeneration,\n          phase: 'target'\n        }\n      };\n    }\n\n    function completeHapticPhase(token, atMs) {\n      var envelope = slotEnvelopes[token.slotId];\n      if (envelope !== undefined && envelope.ownerKey === token.ownerKey &&\n          envelope.ownerGeneration === token.ownerGeneration) {\n        if (token.phase === 'fall' && !envelope.floorApplied) {\n          envelope.floorApplied = true;\n          envelope.riseAt = atMs + envelope.fallMs;\n        } else if (token.phase === 'target' || token.phase === 'floor') {\n          envelope.phase = token.phase;\n        }\n      }\n    }\n\n    function dispatch(atMs, expiredParts) {\n      var slots = ns.computeSlots(engine.readState(), normalizedConfig, atMs);\n      var index;\n      var slot;\n      var prepared;\n      var transition;\n      var applied;\n      var changed = 0;\n      for (index = 0; index < slots.length; index += 1) {\n        slot = slots[index];\n        if (slot.enabled) {\n          prepared = prepareHapticSlot(slot, atMs);\n          transition = prepared.transition === null\n            ? transitionFor(prepared.slot, expiredParts)\n            : prepared.transition;\n          applied = apply(prepared.slot, transition, false);\n          if (applied.completed && prepared.token !== null) {\n            completeHapticPhase(prepared.token, atMs);\n          }\n          if (applied.changed) {\n            changed += 1;\n          }\n        }\n      }\n      return { changedSlots: changed };\n    }\n\n    function preview(message, atMs) {\n      var applied = engine.applyMessage(message, atMs, true);\n      return {\n        message: copy(message),\n        snapshot: copy(applied.snapshot),\n        slots: copy(ns.computeSlots(applied.snapshot, normalizedConfig, atMs))\n      };\n    }\n\n    runtime.handle = function (payloadText) {\n      var parsed = ns.parseMessage(payloadText, normalizedConfig);\n      var atMs;\n      var applied;\n      var expired;\n      var testPreview;\n      var dispatched;\n      var stopped;\n      if (!parsed.ok) {\n        return parsed;\n      }\n      atMs = now();\n      if (parsed.message.command === 'test') {\n        testPreview = preview(parsed.message, atMs);\n        if (typeof outputAdapter.log === 'function') {\n          outputAdapter.log(copy(testPreview));\n        }\n        return { ok: true, changedSlots: 0, preview: testPreview };\n      }\n      if (parsed.message.command === 'stop_all') {\n        stopped = runtime.stopAll();\n        return {\n          ok: true,\n          changedSlots: stopped\n        };\n      }\n      applied = engine.applyMessage(parsed.message, atMs, false);\n      if (applied.rejected !== null) {\n        return {\n          ok: false,\n          code: applied.rejected.code,\n          detail: applied.rejected.detail\n        };\n      }\n      expired = engine.expire(atMs, false);\n      if (applied.ignoredReason === 'absent_event' && !expired.changed) {\n        return {\n          ok: true,\n          changed: false,\n          changedSlots: 0\n        };\n      }\n      dispatched = dispatch(atMs, expired.changedParts);\n      return {\n        ok: true,\n        changed: applied.changed || expired.changed,\n        changedSlots: dispatched.changedSlots\n      };\n    };\n\n    runtime.tick = function () {\n      var atMs = now();\n      var expired = engine.expire(atMs, false);\n      var dispatched = dispatch(atMs, expired.changedParts);\n      return dispatched.changedSlots;\n    };\n\n    runtime.stopAll = function () {\n      var atMs = now();\n      var slots;\n      var slot;\n      var index;\n      var applied;\n      var changed = 0;\n      slotEnvelopes = {};\n      engine.clearAll(false);\n      slots = ns.computeSlots(engine.snapshot(), normalizedConfig, atMs);\n      for (index = 0; index < slots.length; index += 1) {\n        slot = slots[index];\n        if (slot.enabled) {\n          slot.value = 0;\n          slot.frequency = 0;\n          slot.direction = null;\n          applied = apply(slot, { rampSeconds: 0 }, true);\n          if (applied.changed) {\n            changed += 1;\n          }\n        }\n      }\n      return changed;\n    };\n\n    runtime.snapshot = function () {\n      return engine.snapshot();\n    };\n\n    runtime.hapticSnapshot = function () {\n      var logical = engine.hapticSnapshot();\n      return {\n        cadenceRecords: copy(logical.cadenceRecords),\n        partOwners: copy(logical.partOwners),\n        slotEnvelopes: copy(slotEnvelopes)\n      };\n    };\n\n    runtime.invalidateSlot = function (slotId) {\n      if (typeof slotId !== 'number' || !isFinite(slotId) || slotId % 1 !== 0 || slotId < 1 || slotId > 16) {\n        throw new Error('Runtime slot ID must be an integer from 1 through 16.');\n      }\n      delete lastTuples[slotId];\n    };\n\n    return runtime;\n  };\n}(XTHB));\n(function (ns) {\n  function slotSuffix(slotId) {\n    if (typeof slotId !== 'number' || !isFinite(slotId) || slotId % 1 !== 0 || slotId < 1 || slotId > 16) {\n      throw new Error('XToys output slot ID must be an integer from 1 through 16.');\n    }\n    return slotId < 10 ? '0' + slotId : String(slotId);\n  }\n\n  function directionCode(direction) {\n    if (direction === 'clockwise') {\n      return 1;\n    }\n    if (direction === 'counterclockwise') {\n      return -1;\n    }\n    return 0;\n  }\n\n  function safeConsoleLog(text) {\n    try {\n      if (typeof console !== 'undefined' && console !== null && typeof console.log === 'function') {\n        console.log(text);\n      }\n    } catch (ignored) {\n      /* Logging must never interrupt physical output handling. */\n    }\n  }\n\n  function serialized(value) {\n    try {\n      return JSON.stringify(value);\n    } catch (ignored) {\n      return String(value);\n    }\n  }\n\n  ns.createXToysAdapter = function (logLevel) {\n    var level = logLevel === 'off' || logLevel === 'debug' ? logLevel : 'errors';\n    var completedCalls = 0;\n    var adapter = {\n      applySlot: function (slot, transition) {\n        var suffix = slotSuffix(slot.id);\n        setVariable('xthb-slot-' + suffix + '-value', slot.value);\n        setVariable('xthb-slot-' + suffix + '-frequency', slot.frequency);\n        setVariable('xthb-slot-' + suffix + '-ramp-seconds', transition.rampSeconds);\n        setVariable('xthb-slot-' + suffix + '-direction-code', directionCode(slot.direction));\n        callAction({ type: 'updateJob', job: 'xthb-output-' + suffix, action: 'start' });\n        completedCalls += 1;\n        if (level === 'debug' && completedCalls >= 100) {\n          safeConsoleLog('XTHB debug: 100 XToys slot calls completed without exception.');\n          completedCalls = 0;\n        }\n      },\n      log: function (entry) {\n        var type = entry && entry.type !== undefined ? String(entry.type) : '';\n        if (level !== 'off' && type.indexOf('error') !== -1) {\n          safeConsoleLog('XTHB error: ' + serialized(entry));\n        } else if (level === 'debug') {\n          safeConsoleLog('XTHB debug: ' + serialized(entry));\n        }\n      }\n    };\n    return adapter;\n  };\n}(XTHB));\nvar xtoysBridgeInit;\nvar xtoysBridgeHandle;\nvar xtoysBridgeTick;\nvar xtoysBridgeStopAll;\nvar xtoysBridgeTestSlot;\n\n(function (ns) {\n  var runtime = null;\n  var adapter = null;\n  var config = null;\n\n  ns.MODULE_GLOBAL_ENTRY = true;\n\n  function safeConsoleError(detail) {\n    try {\n      if (typeof console !== 'undefined' && console !== null && typeof console.log === 'function') {\n        console.log('XTHB error: ' + detail);\n      }\n    } catch (ignored) {\n      /* A failed console must not escape a public global. */\n    }\n  }\n\n  function errorDetail(error) {\n    return error && error.message !== undefined ? String(error.message) : String(error);\n  }\n\n  function reportError(type, error, targetAdapter, slotId) {\n    var outputAdapter = targetAdapter || adapter;\n    var entry = { type: type, detail: errorDetail(error) };\n    if (slotId !== undefined) {\n      entry.slotId = slotId;\n    }\n    if (outputAdapter !== null && typeof outputAdapter.log === 'function') {\n      try {\n        outputAdapter.log(entry);\n        return;\n      } catch (ignored) {\n        /* Fall through to the guarded console. */\n      }\n    }\n    safeConsoleError(entry.detail);\n  }\n\n  function readCandidate() {\n    var raw = getVariable('xthb-config-json');\n    var parsed;\n    var validation;\n    var nextAdapter;\n    if (typeof raw !== 'string') {\n      throw new Error('xthb-config-json must contain a JSON string.');\n    }\n    try {\n      parsed = JSON.parse(raw);\n    } catch (error) {\n      throw new Error('invalid_config_json: ' + errorDetail(error));\n    }\n    validation = ns.validateConfig(parsed);\n    if (!validation.ok) {\n      throw new Error(validation.code + ': ' + validation.detail);\n    }\n    nextAdapter = ns.createXToysAdapter(validation.config.logLevel);\n    return {\n      config: validation.config,\n      adapter: nextAdapter,\n      runtime: ns.createRuntime(validation.config, nextAdapter, ns.nowMs)\n    };\n  }\n\n  function finiteNumber(value) {\n    var numeric;\n    if (typeof value === 'number') {\n      return isFinite(value) ? { ok: true, value: value } : { ok: false };\n    }\n    if (typeof value !== 'string' || value.replace(/^\\s+|\\s+$/g, '') === '') {\n      return { ok: false };\n    }\n    numeric = Number(value);\n    return isFinite(numeric) ? { ok: true, value: numeric } : { ok: false };\n  }\n\n  function manualDirection(slot, value, direction) {\n    if (slot.type !== 'rotation') {\n      return { ok: true, value: null };\n    }\n    if (value === 0 && (direction === undefined || direction === null || direction === '')) {\n      return { ok: true, value: null };\n    }\n    if (direction === 'clockwise' || direction === 'counterclockwise') {\n      return { ok: true, value: direction };\n    }\n    return { ok: false, value: null };\n  }\n\n  xtoysBridgeInit = function () {\n    var candidate;\n    try {\n      candidate = readCandidate();\n      candidate.runtime.stopAll();\n      runtime = candidate.runtime;\n      adapter = candidate.adapter;\n      config = candidate.config;\n      return 1;\n    } catch (error) {\n      reportError('config_error', error,\n        candidate === undefined ? null : candidate.adapter);\n      return 0;\n    }\n  };\n\n  xtoysBridgeHandle = function (payloadText) {\n    var result;\n    if (runtime === null) {\n      return 0;\n    }\n    try {\n      result = runtime.handle(payloadText);\n      if (!result.ok) {\n        adapter.log({ type: 'input_error', code: result.code, detail: result.detail });\n        return 0;\n      }\n      return 1;\n    } catch (error) {\n      reportError('runtime_error', error, adapter);\n      return 0;\n    }\n  };\n\n  xtoysBridgeTick = function () {\n    if (runtime === null) {\n      return 0;\n    }\n    try {\n      return runtime.tick();\n    } catch (error) {\n      reportError('runtime_error', error, adapter);\n      return 0;\n    }\n  };\n\n  xtoysBridgeStopAll = function () {\n    if (runtime === null) {\n      return 0;\n    }\n    try {\n      return runtime.stopAll();\n    } catch (error) {\n      reportError('runtime_error', error, adapter);\n      return 0;\n    }\n  };\n\n  xtoysBridgeTestSlot = function (slotId, value, direction) {\n    var parsedSlot = finiteNumber(slotId);\n    var parsedValue = finiteNumber(value);\n    var numericSlot;\n    var numericValue;\n    var selected;\n    var parsedDirection;\n    if (runtime === null || !parsedSlot.ok || !parsedValue.ok) {\n      return 0;\n    }\n    numericSlot = parsedSlot.value;\n    numericValue = parsedValue.value;\n    if (numericSlot % 1 !== 0 || numericSlot < 1 || numericSlot > 16) {\n      return 0;\n    }\n    selected = config.slots[numericSlot - 1];\n    if (!selected.enabled || selected.id !== numericSlot) {\n      return 0;\n    }\n    parsedDirection = manualDirection(selected, numericValue, direction);\n    if (!parsedDirection.ok) {\n      return 0;\n    }\n    runtime.invalidateSlot(numericSlot);\n    try {\n      adapter.applySlot({\n        id: numericSlot,\n        value: ns.clamp(numericValue, 0, 100),\n        frequency: 0,\n        direction: parsedDirection.value\n      }, { rampSeconds: 0 });\n      return 1;\n    } catch (error) {\n      reportError('xtoys_call_error', error, adapter, numericSlot);\n      return 0;\n    }\n  };\n}(XTHB));\n"
+}

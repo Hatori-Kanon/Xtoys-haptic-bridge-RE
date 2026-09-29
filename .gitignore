@@ -1,0 +1,23 @@
+# 本地配置（不要提交真实 Webhook ID）
+*.local.*
+*.local.json
+
+# 运行产物与日志
+logs/
+*.log
+.tmp/
+tmp/
+payloads/*
+!payloads/.keep
+
+# 构建产物
+bin/
+obj/
+*.dll
+*.pdb
+*.exe
+*.zip
+
+# 备份
+*.bak
+*~
