@@ -53,9 +53,9 @@
 
 | 保留（已验证的知识） | 丢弃（过度设计 / 无实测收益） |
 | --- | --- |
-| XToys Script JSON 语法、Action 形状、宿主 JS API → `docs/xtoys-script-format.md` | 16 槽通用运行时引擎（8 个 ES5 模块 ~60 KB、86 KB 构建产物） |
-| Webhook 协议（封装/字段/命令） → `docs/webhook-protocol.md` | 有界状态/容量上限（128 事件、256 目标、64 基线来源…） |
-| 三个游戏的事件映射与 probe 方法论 → `docs/game-event-mappings.md` | 逻辑 generation、物理 generation、重试队列、重同步、reload 回滚 |
+| XToys Script JSON 语法、Action 形状、宿主 JS API → `docs/01-xtoys-script-format.md` | 16 槽通用运行时引擎（8 个 ES5 模块 ~60 KB、86 KB 构建产物） |
+| Webhook 协议（封装/字段/命令） → `docs/02-webhook-protocol.md` | 有界状态/容量上限（128 事件、256 目标、64 基线来源…） |
+| 三个游戏的事件映射与 probe 方法论 → `docs/05-game-event-mappings.md` | 逻辑 generation、物理 generation、重试队列、重同步、reload 回滚 |
 | 一份真实可导入的 Script JSON 结构样本 → `examples/xtoys-importable-reference.json` | 自适应 retrigger（7 字段 + EMA + texture/phases）、pulse 状态机 |
 | 游戏侧适配器参考实现 → `reference/` | 179 项自动化测试与基准脚本 |
 | 安全边界与"同步返回 ≠ 设备确认"的结论 | 十余份 spec/plan/report 过程文档 |
@@ -107,7 +107,8 @@ Script 是手动启停的。启动 = Initial Actions（归零 → 写配置 → 
 
 ## 4. XToys 平台知识（摘要）
 
-> 完整语法、Action 全表、已验证/未验证清单见 **`docs/xtoys-script-format.md`**。
+> 完整语法、Action 全表、已验证/未验证清单见 **`docs/01-xtoys-script-format.md`**。
+> **从 Webhook 进来到 Block 输出的完整链路与时序图见 `docs/04-architecture-flow.md`。**
 
 ### 4.1 心智模型
 
@@ -141,7 +142,7 @@ Script 是手动启停的。启动 = Initial Actions（归零 → 写配置 → 
 
 ## 5. 通信协议（摘要）
 
-> 完整字段表、命令示例、错误码见 **`docs/webhook-protocol.md`**。
+> 完整字段表、命令示例、错误码见 **`docs/02-webhook-protocol.md`**。
 
 传输：POST `https://webhook.xtoys.app/<Webhook ID>`，固定外层 `{"action":"xtoys_game_bridge","payload":"<内层JSON字符串>"}`。
 
@@ -166,7 +167,7 @@ Script 是手动启停的。启动 = Initial Actions（归零 → 写配置 → 
 
 ## 6. 游戏侧知识
 
-> 完整映射表见 **`docs/game-event-mappings.md`**。
+> 完整映射表见 **`docs/05-game-event-mappings.md`**。
 
 | 游戏 | 引擎 | 接入方式 | 结论 |
 | --- | --- | --- | --- |
@@ -245,11 +246,11 @@ Script 是手动启停的。启动 = Initial Actions（归零 → 写配置 → 
 - [ ] 发 `set_baseline` → 确认持续输出；发 `play` → 确认瞬态叠加；等它到期 → 确认回到基线（不是归零）。
 - [ ] 发反向 `update` → 确认方向立刻改变，没有中间停顿。
 - [ ] 发 `stop_all`、再手动停 Script → 确认**所有**输出归零。
-- [ ] 记录本次测试的 Script 修订号与设备/通道绑定；把与文档不符的地方补回 `docs/xtoys-script-format.md` §8。
+- [ ] 记录本次测试的 Script 修订号与设备/通道绑定；把与文档不符的地方补回 `docs/01-xtoys-script-format.md` §8。
 
 ### 9.2 探针流程（接新游戏时）
 
-独立探针 → 一次一个行为 → 收集日志 → 只提取可重复量 → 写入 `docs/game-event-mappings.md` → 再写正式 Bridge。
+独立探针 → 一次一个行为 → 收集日志 → 只提取可重复量 → 写入 `docs/05-game-event-mappings.md` → 再写正式 Bridge。
 正式 Bridge 里探针默认关闭。
 
 ### 9.3 提交约定
@@ -266,17 +267,24 @@ Script 是手动启停的。启动 = Initial Actions（归零 → 写配置 → 
 Xtoys-haptic-bridge/
 ├─ HANDOFF.md                          ← 本文档，主工作文档
 ├─ README.md                           ← 极简导航
-├─ docs/
-│  ├─ xtoys-script-format.md           ← XToys 脚本 JSON / Action / 宿主 JS API（核心资产）
-│  ├─ webhook-protocol.md              ← 游戏 → XToys 通信协议（精简版）
-│  └─ game-event-mappings.md           ← 各游戏事件映射 + probe 方法论
+├─ docs/                                ← 编号 = 阅读顺序
+│  ├─ 01-xtoys-script-format.md         ← XToys 脚本 JSON / Action / 宿主 JS API（核心资产）
+│  ├─ 02-webhook-protocol.md            ← 游戏 → XToys 通信协议（精简版）
+│  ├─ 03-protocol-mapping.md            ← part → Block 映射与仲裁（**已定论**，权威定义）
+│  ├─ 04-architecture-flow.md           ← Webhook → Block 输出 的完整数据流与时序图
+│  ├─ 05-game-event-mappings.md         ← 各游戏事件映射 + probe 方法论
+│  └─ 07-stage0-status-and-todo.md      ← 阶段 0 状态、已写代码、缺陷、剩余待议
+├─ src/                                 ← ES5 运行时源码（阶段 0 骨架，**未按映射定论重写**）
+├─ tools/                               ← 生成器与逻辑测试脚本
 ├─ examples/
-│  └─ xtoys-importable-reference.json  ← 旧版完整可导入 Script（**只作语法参考**）
+│  ├─ xtoys-importable-reference.json   ← 旧版完整可导入 Script（**只作语法参考**）
+│  ├─ xtoys-minimal-3path.json          ← 阶段 0 生成物（**按旧广播模型，待重生成**）
+│  └─ xthb-customFunctions.js           ← customFunctions 独立可读副本
 └─ reference/
-   ├─ rpg-maker-mv/XtoysWS.js          ← 最初的 MV 参考实现
-   ├─ rpg-maker-mz/XtoysBridgeMZ.js    ← 已跑通的 MZ Bridge
-   ├─ aruna-ue4ss/                     ← UE4SS Lua Bridge
-   └─ dominate-plan/                   ← BepInEx Bridge + Core
+   ├─ rpg-maker-mv/XtoysWS.js           ← 最初的 MV 参考实现
+   ├─ rpg-maker-mz/XtoysBridgeMZ.js     ← 已跑通的 MZ Bridge
+   ├─ aruna-ue4ss/                      ← UE4SS Lua Bridge
+   └─ dominate-plan/                    ← BepInEx Bridge + Core
 ```
 
 ### 关于 `examples/xtoys-importable-reference.json`
@@ -311,8 +319,17 @@ C:\Users\HatoriKanon\Claude\Projects\Xtoys-ws-plugin   （原始开发工作区�
 
 ## 12. 待办（下一步）
 
-- [ ] 按 §8 阶段 0 手工搭出最小 Script，并在真机上跑通首次验收
+> ⚠️ **阶段 0 暂停中**：用户要求先讨论清楚协议映射，讨论完成后再动代码。
+> - **映射与仲裁已定论** → `docs/03-protocol-mapping.md`（part→Block 的唯一权威定义）
+> - **状态、已写代码、已知缺陷、剩余待议** → `docs/07-stage0-status-and-todo.md`
+>
+> 恢复工作时先读这两份文件。
+
+- [ ] 定完剩余 4 项：部位命名统一（`clit`/`anal` vs `clitoris`/`anus`）、旋转路径是否本阶段生成、
+      同数组内同部位重复出现如何处理、指标被忽略时的留痕形式
+- [ ] 按 §8 阶段 0 搭出最小 Script，并在真机上跑通首次验收
 - [ ] 用最小实现替换 `examples/xtoys-importable-reference.json`，产出一个真正干净的示例
-- [ ] 真机验证后，把实测差异补进 `docs/xtoys-script-format.md` §8 的 ⚠️/❌ 清单
-- [ ] 确定"同槽多事件竞争"的最终规则并写下来
-- [ ] 决定是否保留虚拟组（`genitals` 等）；默认先不做
+- [ ] 真机验证后，把实测差异补进 `docs/01-xtoys-script-format.md` §8 的 ⚠️/❌ 清单
+- [x] ~~确定"同槽多事件竞争"的最终规则并写下来~~ → 已定：`priority` → 数值 → `sequence`，
+      且**只在同一部位内部竞争**（`docs/03-protocol-mapping.md` §5）
+- [x] ~~决定是否保留虚拟组~~ → 已定：**不做**（与"一个 Block 专属一个 part"冲突，见 §6.3）

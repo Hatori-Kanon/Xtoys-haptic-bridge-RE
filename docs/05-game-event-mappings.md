@@ -138,7 +138,7 @@
 结论：partValue 对输出控制不重要，XToys 侧用 `partPercent`。
 
 > ⚠️ 注意：这个游戏用的是**自己的旧式扁平协议**（外层 action 取 hit/climax/test），
-> 不是本仓库的通用协议。重做时应统一到 `docs/webhook-protocol.md`。
+> 不是本仓库的通用协议。重做时应统一到 `docs/02-webhook-protocol.md`。
 
 ---
 

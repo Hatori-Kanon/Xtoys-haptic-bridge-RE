@@ -58,9 +58,25 @@ Webhook POST 到 `https://webhook.xtoys.app/<Webhook ID>`，`Content-Type: appli
 | `durationMs` | number | 有限事件总时长；`play`/`update` 必须有正值 |
 | `rampUpMs` | number，默认 0 | 数值升高时的渐入时间 |
 | `rampDownMs` | number，默认 0 | 数值降低 / 停止 / 到期时的渐出时间 |
-| `priority` | number，默认 0 | 同一物理槽竞争时数值大者优先 |
+| `priority` | number，默认 0 | 仲裁第一级。**竞争只发生在同一部位内部**（基线 vs 有限事件、或两个重叠事件），因为一个 Block 专属一个部位、不同部位永不竞争。它让游戏侧能表达"数值更小但更重要"，而不必靠抬高数值抢输出。见 `docs/03-protocol-mapping.md` §5 |
 
 所有数值必须是有限数。协议**不控制**设备最大强度与最大旋转速度 —— 那始终是用户在 XToys 设备设置里的选择。
+
+**一个部位在一个 `targets` 数组里只出现一次。** 该部位的所有指标合并在同一条 target 里；
+同一部位重复出现是非法写法，整体拒绝。三条指标**各自独立判断**，没有主次或门控关系：
+
+| 指标 | 驱动什么 | 该部位没有对应 Block 时 |
+| --- | --- | --- |
+| `intensity` | 该部位的 estim + vibrate 输出 | 忽略并留痕 |
+| `frequency` | 该部位的 estim 输出（`vibrate` 永不消费频率） | 忽略并留痕 |
+| `rotateSpeed` + `rotateDirection` | 该部位的 rotate 输出 | 忽略并留痕 |
+
+- **纯 rotate 的 target 合法**（游戏侧的"只走某几种方式"开关会产生它）。
+- `rotateSpeed > 0` 必须给 `rotateDirection`；`rotateSpeed == 0` 表示停止旋转，方向可省。
+- 一条 target 若**连一个驱动指标都没有**（`intensity` / `frequency` / `rotateSpeed` 全缺，
+  含只带 `rotateDirection` 的情况）→ 整体拒绝。
+
+完整规则（忽略、拒绝、留痕的边界）见 **`docs/03-protocol-mapping.md`** §6.2 / §6.5。
 
 ---
 
@@ -68,9 +84,17 @@ Webhook POST 到 `https://webhook.xtoys.app/<Webhook ID>`，`Content-Type: appli
 
 `mouth`、`breast`、`nipple`、`armpit`、`clitoris`、`vulva`、`vagina`、`urethra`、`anus`、`butt`、`penis`、`prostate`
 
-可选虚拟组（组到叶子的权重由 XToys 侧配置；游戏能区分时应直接发叶子）：
+> 部位名一律用**全称**（`clitoris` / `anus`，不用 `clit` / `anal`）。
+> Block 名、Channel ID、变量名、Job 名沿用同一部位名，两边必须完全一致，
+> 否则游戏侧发的部位名会被判为未知部位而整体拒绝。见 `docs/03-protocol-mapping.md` §2.1 / §2.3。
 
-`genitals`、`lower_body`、`double_hole`、`whole_body`、`mixed`
+**`part` 是协议里唯一的执行定位键。** 协议不包含通道名、设备名、逻辑执行器 id、slot 或权重 ——
+"哪个部位对应哪几个 Block"是接收端的配置，见 **`docs/03-protocol-mapping.md`**。
+
+**虚拟组本阶段不做**（原列表：`genitals`、`lower_body`、`double_hole`、`whole_body`、`mixed`）。
+原因：一个 Block 专属一个部位，而"组"会落到多个部位的 Block 上、自身没有专属 Block，语义冲突。
+游戏侧能区分时直接发叶子部位；区分不了时由游戏侧自己选叶子部位或发多个 target。
+详见 `docs/03-protocol-mapping.md` §6.3。
 
 ---
 

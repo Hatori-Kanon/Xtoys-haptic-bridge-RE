@@ -15,9 +15,12 @@
 | 路径 | 内容 |
 | --- | --- |
 | [HANDOFF.md](HANDOFF.md) | 主工作文档（入口） |
-| [docs/xtoys-script-format.md](docs/xtoys-script-format.md) | XToys 脚本 JSON 语法与宿主 JS API |
-| [docs/webhook-protocol.md](docs/webhook-protocol.md) | 游戏 → XToys 通信协议（精简版） |
-| [docs/game-event-mappings.md](docs/game-event-mappings.md) | 各游戏事件映射与 probe 方法论 |
+| [docs/01-xtoys-script-format.md](docs/01-xtoys-script-format.md) | XToys 脚本 JSON 语法与宿主 JS API |
+| [docs/02-webhook-protocol.md](docs/02-webhook-protocol.md) | 游戏 → XToys 通信协议（精简版） |
+| [docs/03-protocol-mapping.md](docs/03-protocol-mapping.md) | part → Block 映射与仲裁（已定论，权威定义） |
+| [docs/04-architecture-flow.md](docs/04-architecture-flow.md) | Webhook → Block 输出 的完整数据流与时序图 |
+| [docs/05-game-event-mappings.md](docs/05-game-event-mappings.md) | 各游戏事件映射与 probe 方法论 |
+| [docs/07-stage0-status-and-todo.md](docs/07-stage0-status-and-todo.md) | 阶段 0 状态、已写代码、缺陷、剩余待议 |
 | [examples/](examples/) | 真实可导入的 Script 示例（**仅作语法参考**） |
 | [reference/](reference/) | 旧游戏侧适配器源码（MV / MZ / UE4SS / BepInEx） |
 
