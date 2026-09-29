@@ -83,23 +83,38 @@
 
 **无。** 协议映射的待议项已全部定论，见 `docs/03-protocol-mapping.md` §7 的结论表。
 
-下一步是**动代码**（用户要求讨论完成后再开工）。建议动手术前先把当前这版
-（按旧广播模型写的、未提交的骨架）**提交一次作为可回退检查点**，
-因为它是唯一能证明"骨架可跑"的版本。
+### 4.1 架构流程图评审又定下的两条（2026-09-30）
+
+用户在评审 `docs/04-architecture-flow.md` 时指出两处问题，已定论并写进映射文档：
+
+1. **推送判据不能只比数值** → 改为 **数值 或 驱动者身份（`driveId` = source+eventId+sequence）**
+   任一变化就推送。否则"新事件、强度恰好与当前相同"会被静默丢掉，体感上什么都没发生；
+   而 ramp 是设备级动作，重跑输出 Job 才会重新走一遍 `rampTime`。
+   稳定态下 `driveId` 与数值都不变，防抖依然生效。见 `docs/03-protocol-mapping.md` §4.4。
+2. **删除"协议部位白名单"** → 部位名是否可用完全由接收端映射配置定义；
+   未识别的部位与"合法但没配 Block"走**同一条忽略并留痕**路径，不再整体拒绝。
+   解析阶段对 `part` 的唯一要求是"非空字符串"。见 `docs/03-protocol-mapping.md` §6.1。
+
+这两条都**尚未落到代码**（当前骨架仍是白名单 + 只比数值）。
+
+下一步是**动代码**（用户要求讨论完成后再开工）。骨架**已提交**为可回退检查点
+（`76ae08e`，按旧广播模型），远端 `origin/master` 已同步。
 
 ---
 
 ## 5. 恢复后的执行顺序（建议）
 
-0. **先提交当前骨架作为检查点**（`src/`、`tools/`、`examples/` 均未跟踪，
-   尚无任何提交；先提交才能在做坏手术时干净回退）。
+0. ~~先提交当前骨架作为检查点~~ → **已完成**：`8eebf78` … `76ae08e` 已推送 `origin/master`。
 1. 修 §2 的缺陷 1–3，跑通生成 + 测试，形成有效检查点。
 2. 按 `docs/03-protocol-mapping.md` 改代码，改动只落在：
    - `tools/build-xtoys-script.mjs`：按映射表生成 **9 组** channel + Job + 变量（不是 8 组）；
      `BRIDGE_CONFIG` 换成 §3 形状；命名按 §2.1。
-   - `src/xtoys-bridge.js`：`xthbChannelMapFor()` 改查映射表；候选收集按 part 分组；
-     加"Block 专属一个 part"校验；加被忽略指标留痕；加同部位重复 target 拒绝；
-     按 §6.2 调整指标校验（`rotateSpeed: 0` 允许无方向）。
+   - `src/xtoys-bridge.js`：
+     - `xthbChannelMapFor()` 改查映射表；候选收集按 part 分组；
+     - **删除部位白名单**（§4.1 第 2 条）；
+     - **推送判据加入 `driveId`**（§4.1 第 1 条）；
+     - 加"Block 专属一个 part"校验；加被忽略指标留痕；加同部位重复 target 拒绝；
+     - 按 §6.2 调整指标校验（`rotateSpeed: 0` 允许无方向）。
 3. 再写 `docs/minimal-script-build.md` 与 `tools/Invoke-XtoysAcceptance.ps1`。
 4. 真机验收：E-Stim + 振动器可完整跑；`Rotate-nipple` 标注未验证。
 5. 验收后把实测差异补进 `docs/01-xtoys-script-format.md` §8。

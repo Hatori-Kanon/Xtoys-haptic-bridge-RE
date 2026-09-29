@@ -80,9 +80,9 @@ sequenceDiagram
     T->>T: 按 §6.2 把指标分派到该部位的 Block<br/>没有对应 Block 的指标 → 忽略并留痕
     T->>T: 仲裁 priority → 数值 → sequence（同一部位内部）
     T->>T: 算出每个 Block 的目标值 / 频率 / 方向 / ramp 秒数
-    alt 值与上次写下的相同
-        T->>T: 跳过（唯一的防抖优化）
-    else 值变了（或需要强制归零）
+    alt 值 与 驱动者身份 都没变
+        T->>T: 跳过（防抖生效，不碰硬件）
+    else 值 或 驱动者身份变了（含"新事件但强度相同"、到期回落、强制归零）
         T->>V: setVariable(xthb-{metric}-{part}-value, …)<br/>+ ramp-seconds / frequency / direction-code
         T->>O: callAction({type:"updateJob", action:"start"})
         O->>V: 用 {变量名} 占位符读回当前值
@@ -121,11 +121,11 @@ sequenceDiagram
 | --- | --- | --- | --- |
 | B1 | 100 ms 自循环调度 Job 调 tick | `jobs["xthb-scheduler"]`（timer 0.1 + `goTo` 自循环） | 语法 §3 |
 | B2 | 到期清理 | `xtoysBridgeTick` | 协议 §3 |
-| B3 | 收集该部位的候选：基线意图 ∪ 未到期事件意图 | `xthbCollectCandidates(part, metric)` | 映射 §4 |
+| B3 | 收集该部位的候选：基线意图 ∪ 未到期事件意图（只保留带该 metric 的） | `xthbCollectCandidates(part, metric)` | 映射 §4.1 |
 | B4 | 按 §6.2 把三条指标分派到对应的 Block；没配 Block 的指标忽略并留痕 | `xthbChannelMapFor` / 留痕计数 | 映射 §6.2 |
-| B5 | 仲裁：`priority` → 数值 → `sequence`（**只在同一部位内部**） | `xthbPickBetter` | 映射 §5 |
-| B6 | 算目标值 / 频率 / 方向码 / ramp 秒数 | `xthbComputeOutputs` / `xthbChannelOutput` / `xthbRampSeconds` | 映射 §4 |
-| B7 | 值与上次相同 → 跳过写变量、跳过启动 Job | `xthbPushOutputs` 的比较 | §7.2 唯一优化 |
+| B5 | 仲裁：`priority` → 数值 → `sequence`（**只在同一部位内部**） | `xthbPickBetter` | 映射 §4.2 / §5 |
+| B6 | 算目标值 / 频率 / 方向码 / ramp 秒数（winner 决定全部字段） | `xthbComputeOutputs` / `xthbChannelOutput` / `xthbRampSeconds` | 映射 §4.3 |
+| B7 | **值 `或` 驱动者身份（source+eventId+sequence）变化** → 推送；两者都不变 → 跳过 | `xthbPushOutputs` 的比较 | 映射 §4.4 |
 | B8 | `setVariable` 写输出变量 | `xthbPushOutputs` | 语法 §6 |
 | B9 | `callAction({type:"updateJob", action:"start"})` 唤醒输出 Job | `xthbPushOutputs` | 语法 §4.3 |
 | B10 | 输出 Job 用 `{变量名}` 读值并写硬件 | `jobs["xthb-output-{metric}-{part}"]` | 语法 §3/§4.2 |
@@ -134,6 +134,12 @@ sequenceDiagram
 **为什么要有"写变量 + 启动 Job"这一步**：这是 `docs/01-xtoys-script-format.md` §6 记录的
 **唯一实测可用的路径** —— JS 不能直接操作硬件，只能写 Script 变量，再由 Job 的
 `{变量名}` 占位符读走。所以 JS 算完结果必须经过变量这个数据总线。
+
+**B7 为什么不能只比数值**：只比数值会让"新事件、强度恰好与当前相同"被静默丢掉 ——
+调用方拿到 `{ok:true}`，体感上却什么都没发生；而且 ramping 是**设备级动作**，
+重跑一次输出 Job 才会重新走一遍 `rampTime`，这正是连击需要的重触发感。
+所以判据是 **值 或 驱动者身份** 变化。完整规则与行为对照表见
+`docs/03-protocol-mapping.md` §4.4。
 
 **旋转的顺序约束**（`HANDOFF.md` §4.3）：输出 Job 里两个 `setDirection`
 必须排在 `setVolume` **之前**，否则换向会慢一拍。见 §5。
@@ -163,7 +169,10 @@ xthbEvents      : { "<source>\u0000<eventId>" → { source, eventId, sequence, p
 xthbBaselines   : { <source> → { sequence, parts } }   基线是【完整快照】，不是叠加
 xthbBaselineSeq : { <source> → number }                序号栅栏；stop_all 清状态但【保留】它
 
-xthbWritten     : 上次写进变量的输出；值没变就不写、不启动 Job
+xthbWritten     : { <channel> → { value, frequency, rampSeconds, driveId } }
+                  上次写进变量的输出 + 当时的【驱动者身份】
+                  driveId = source + "\0" + eventId + "\0" + sequence（无候选时 ""）
+                  推送条件 = 数值 或 driveId 变了（见 §3 B7 与映射 §4.4）
 ```
 
 输出变量（每条 Block 一组，命名见 `docs/03-protocol-mapping.md` §2.1）：
@@ -205,12 +214,16 @@ xthbWritten     : 上次写进变量的输出；值没变就不写、不启动 J
 | --- | --- | --- |
 | 外层 `action` 不匹配 | 不触发，静默 | 语法 §5 |
 | 内层 JSON 非法 / 字段非法 | 返回 `{ok:false, code}`；**不改状态、不驱动输出** | 协议 §6 |
-| 部位名不在白名单 | 整体拒绝（不部分写入） | 映射 §6.1 |
+| `part` 不是非空字符串 | 整体拒绝（字段本身畸形） | 映射 §6.1 |
+| `part` 是字符串但不在映射配置里 | **忽略并留痕**（与"没配 Block"同一条路径） | 映射 §6.1 |
 | 部位合法但没配该类 Block | **忽略并留痕**（计数 + 最近一次 part/指标 + 日志） | 映射 §6.2 |
-| 同一 `targets` 里同部位重复 | 整体拒绝 | 映射 §6.5 |
+| 同一 `targets` 里同部位重复 | 整体拒绝（数组语法错误，不是部位合法性问题） | 映射 §6.5 |
 | `sequence` 未严格递增 | 被忽略（**缺陷 1 要修**：必须如实返回失败） | 协议 §2 |
 | JS 抛错 | `try/catch` 记一条日志即可（§7.3：不做每槽独立异常隔离） | §7.3 |
 | Script 停止 / JS 已坏 | Final Actions 的显式 UI 归零兜底 | 语法 §7 |
+
+> **没有"协议部位白名单"。** 部位名是否可用完全由接收端映射配置定义，
+> 未识别与未配 Block 走同一条"忽略并留痕"路径。见 `docs/03-protocol-mapping.md` §6.1。
 
 ---
 
@@ -247,10 +260,12 @@ xthbWritten     : 上次写进变量的输出；值没变就不写、不启动 J
 
 - [ ] 事件驱动与输出刷新**彻底分离**：`handle` 永不直接写硬件，只改状态。
 - [ ] `part` 是唯一执行定位键；协议与代码里都不出现设备名。
+- [ ] **没有部位白名单**：部位名是否可用由映射配置决定，未识别与未配 Block 走同一条忽略路径。
 - [ ] 一个 Block 专属一个 part，配置校验里硬性检查（配重则拒绝初始化）。
 - [ ] 三条指标各自独立分派，没有主次/门控。
 - [ ] 仲裁只在同一部位内部：`priority` → 数值 → `sequence`。
-- [ ] 值与上次相同则跳过写变量与启动 Job。
+- [ ] `frequency` 跟随强度 winner，不独立仲裁。
+- [ ] 推送条件 = **数值 或 驱动者身份（driveId）** 变化；稳定态仍然跳过。
 - [ ] 旋转 Job 里两个 `setDirection` 排在 `setVolume` 之前。
 - [ ] `stop_all`、JS 归零函数、Final Actions 显式 UI 归零 —— 三条都要有。
 - [ ] 绝不调用任何设置最大强度/最大旋转速度的接口。
