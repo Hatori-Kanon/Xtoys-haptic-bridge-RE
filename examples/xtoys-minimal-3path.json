@@ -1,0 +1,283 @@
+{
+  "initialActions": [
+    {
+      "type": "updateComponent",
+      "action": "setFrequency",
+      "channel": "part-estim-a",
+      "format": "relative",
+      "frequencyPercent": "0"
+    },
+    {
+      "type": "updateComponent",
+      "action": "setMode",
+      "channel": "part-estim-a",
+      "mode": "standard"
+    },
+    {
+      "type": "updateComponent",
+      "action": "setVolume",
+      "channel": "part-estim-a",
+      "rampTime": 0,
+      "percentVolume": "0"
+    },
+    {
+      "type": "updateComponent",
+      "action": "setVolume",
+      "channel": "part-vibrator-a",
+      "rampTime": 0,
+      "percentVolume": "0"
+    },
+    {
+      "type": "updateComponent",
+      "action": "setVolume",
+      "channel": "part-rotator-a",
+      "rampTime": 0,
+      "percentVolume": "0"
+    },
+    {
+      "type": "updateVariable",
+      "variable": "xthb-config-json",
+      "value": "{\"protocolVersion\":1,\"parts\":[\"mouth\",\"breast\",\"nipple\",\"armpit\",\"clitoris\",\"vulva\",\"vagina\",\"urethra\",\"anus\",\"butt\",\"penis\",\"prostate\"],\"channels\":{\"estim\":{\"intensity\":\"part-estim-a\",\"frequency\":\"part-estim-a\"},\"vibrator\":{\"intensity\":\"part-vibrator-a\"},\"rotator\":{\"volume\":\"part-rotator-a\",\"direction\":\"part-rotator-a\"}},\"routing\":{\"mode\":\"broadcast-intensity\"}}"
+    },
+    {
+      "type": "customCode",
+      "code": "xtoysBridgeInit();",
+      "resultVar": "result",
+      "variables": [],
+      "storeResult": false
+    },
+    {
+      "type": "updateJob",
+      "job": "xthb-scheduler",
+      "action": "start"
+    }
+  ],
+  "finalActions": [
+    {
+      "type": "customCode",
+      "code": "xtoysBridgeStopAll();",
+      "resultVar": "result",
+      "variables": [],
+      "storeResult": false
+    },
+    {
+      "type": "updateJob",
+      "job": "xthb-scheduler",
+      "action": "stop"
+    },
+    {
+      "type": "updateComponent",
+      "action": "setFrequency",
+      "channel": "part-estim-a",
+      "format": "relative",
+      "frequencyPercent": "0"
+    },
+    {
+      "type": "updateComponent",
+      "action": "setMode",
+      "channel": "part-estim-a",
+      "mode": "standard"
+    },
+    {
+      "type": "updateComponent",
+      "action": "setVolume",
+      "channel": "part-estim-a",
+      "rampTime": 0,
+      "percentVolume": "0"
+    },
+    {
+      "type": "updateComponent",
+      "action": "setVolume",
+      "channel": "part-vibrator-a",
+      "rampTime": 0,
+      "percentVolume": "0"
+    },
+    {
+      "type": "updateComponent",
+      "action": "setVolume",
+      "channel": "part-rotator-a",
+      "rampTime": 0,
+      "percentVolume": "0"
+    },
+    {
+      "type": "updateJob",
+      "job": "xthb-output-estim",
+      "action": "stop"
+    },
+    {
+      "type": "updateJob",
+      "job": "xthb-output-vibrator",
+      "action": "stop"
+    },
+    {
+      "type": "updateJob",
+      "job": "xthb-output-rotator",
+      "action": "stop"
+    }
+  ],
+  "globalTriggers": [
+    {
+      "type": "componentState",
+      "action": "xtoys_game_bridge",
+      "channel": "webhook-a",
+      "parsedAction": "xtoys_game_bridge",
+      "actions": [
+        {
+          "type": "customCode",
+          "code": "xtoysBridgeHandle(payload);",
+          "resultVar": "result",
+          "variables": [
+            {
+              "name": "payload",
+              "value": "trigger-payload",
+              "expression": null
+            }
+          ],
+          "storeResult": false
+        }
+      ]
+    }
+  ],
+  "jobs": {
+    "xthb-scheduler": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "type": "customCode",
+              "code": "xtoysBridgeTick();",
+              "resultVar": "result",
+              "variables": [],
+              "storeResult": false
+            }
+          ],
+          "triggers": [
+            {
+              "type": "stepState",
+              "event": "timer",
+              "amount": "0.1",
+              "actions": [
+                {
+                  "job": "xthb-scheduler",
+                  "step": "START",
+                  "type": "updateJob",
+                  "action": "goTo"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "xthb-output-estim": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "type": "updateComponent",
+              "action": "setVolume",
+              "channel": "part-estim-a",
+              "rampTime": "{xthb-estim-ramp-seconds}",
+              "percentVolume": "{xthb-estim-value}"
+            },
+            {
+              "type": "updateComponent",
+              "action": "setFrequency",
+              "channel": "part-estim-a",
+              "format": "relative",
+              "frequencyPercent": "{xthb-estim-frequency}"
+            },
+            {
+              "type": "updateJob",
+              "job": "xthb-output-estim",
+              "action": "stop"
+            }
+          ]
+        }
+      }
+    },
+    "xthb-output-vibrator": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "type": "updateComponent",
+              "action": "setVolume",
+              "channel": "part-vibrator-a",
+              "rampTime": "{xthb-vibrator-ramp-seconds}",
+              "percentVolume": "{xthb-vibrator-value}"
+            },
+            {
+              "type": "updateJob",
+              "job": "xthb-output-vibrator",
+              "action": "stop"
+            }
+          ]
+        }
+      }
+    },
+    "xthb-output-rotator": {
+      "steps": {
+        "START": {
+          "actions": [
+            {
+              "type": "updateComponent",
+              "action": "setDirection",
+              "channel": "part-rotator-a",
+              "direction": "clockwise",
+              "requiredExpression": "{xthb-rotator-direction-code} == 1"
+            },
+            {
+              "type": "updateComponent",
+              "action": "setDirection",
+              "channel": "part-rotator-a",
+              "direction": "counterclockwise",
+              "requiredExpression": "{xthb-rotator-direction-code} == -1"
+            },
+            {
+              "type": "updateComponent",
+              "action": "setVolume",
+              "channel": "part-rotator-a",
+              "rampTime": "{xthb-rotator-ramp-seconds}",
+              "percentVolume": "{xthb-rotator-value}"
+            },
+            {
+              "type": "updateJob",
+              "job": "xthb-output-rotator",
+              "action": "stop"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "queues": [],
+  "channels": {
+    "webhook-a": {
+      "name": "",
+      "type": "webhook",
+      "outbound": false,
+      "hideWebhookInfo": false
+    },
+    "part-estim-a": {
+      "name": "E-Stim",
+      "type": "part-estim"
+    },
+    "part-vibrator-a": {
+      "name": "Vibrator",
+      "type": "part-vibrator"
+    },
+    "part-rotator-a": {
+      "name": "Rotator",
+      "type": "part-rotator"
+    }
+  },
+  "controls": [],
+  "controlPresets": [],
+  "media": {
+    "audio": {},
+    "voices": {},
+    "patterns": {}
+  },
+  "customFunctions": "/*\n * XToys 触觉桥 — 最小接收端运行时（阶段 0）\n * =====================================================================\n * 这是被 tools/build-xtoys-script.mjs 嵌入到 Script JSON 的 customFunctions\n * 字段里的全局 JavaScript 源码。它运行在 XToys 的 JS-Interpreter 中。\n *\n * 硬约束（HANDOFF.md §3.1 / §3.2）：\n *   - 只能用 ES5：var + function，禁止 let/const/=>/class/async/await/\n *     模板字符串/解构/展开。tools/check-es5-subset.mjs 会强制检查。\n *   - 只写\"当前输出值\"（setVolume/setFrequency/setMode/setDirection）。\n *     本文件绝不调用任何设置设备最大强度或最大旋转速度的接口。\n *   - 同步返回 != 设备确认（HANDOFF.md §3.4）。日志与变量名只说\n *     \"XToys 调用未抛异常\"，不得出现\"已确认\"\"已下发成功\"之类措辞。\n *\n * 设计（HANDOFF.md §7.2）：一份最新意图 + 一个 100 ms tick + 值没变就跳过。\n * 不做 generation、不做重试队列、不做重同步、不做容量上限系统。\n *\n * 协议实现范围：play / update / stop / set_baseline / stop_all / test\n * 正式参考：docs/02-webhook-protocol.md\n */\n\n/* =====================================================================\n * 1. 宿主 API 引用（XToys 提供；本地测试工具会注入同名 mock）\n * ===================================================================== */\n\nvar XTHB_setVariable = setVariable;\nvar XTHB_getVariable = getVariable;\nvar XTHB_callAction = callAction;\n\n/* =====================================================================\n * 2. 常量与运行期状态\n * ===================================================================== */\n\nvar XTHB_PROTOCOL_VERSION = 1;\n\nvar XTHB_CMD_PLAY = \"play\";\nvar XTHB_CMD_UPDATE = \"update\";\nvar XTHB_CMD_STOP = \"stop\";\nvar XTHB_CMD_SET_BASELINE = \"set_baseline\";\nvar XTHB_CMD_STOP_ALL = \"stop_all\";\nvar XTHB_CMD_TEST = \"test\";\n\nvar XTHB_DIR_CLOCKWISE = \"clockwise\";\nvar XTHB_DIR_COUNTERCLOCKWISE = \"counterclockwise\";\n\n/* 有界校验门（HANDOFF.md §7.3：不做容量上限系统，只保留解析边界）。\n * 这些是\"拒绝畸形输入\"的门槛，不是需要精细维护的运行时状态。 */\nvar XTHB_MAX_PAYLOAD_CHARS = 16384;\nvar XTHB_MAX_TARGETS = 16;\nvar XTHB_MAX_ID_CHARS = 64;\nvar XTHB_MAX_DURATION_MS = 600000;\nvar XTHB_MAX_EVENTS = 64;\n\n/* 键名刻意加 xthb- 前缀，避免与用户自己建的变量重名。 */\nvar XTHB_VAR_CONFIG = \"xthb-config-json\";\n\nvar XTHB_CH_ESTIM = \"estim\";\nvar XTHB_CH_VIBRATOR = \"vibrator\";\nvar XTHB_CH_ROTATOR = \"rotator\";\n\nvar XTHB_OUT_ESTIM = \"xthb-output-estim\";\nvar XTHB_OUT_VIBRATOR = \"xthb-output-vibrator\";\nvar XTHB_OUT_ROTATOR = \"xthb-output-rotator\";\n\n/* 已初始化的配置（解析自 xthb-config-json）。 */\nvar xthbConfig = null;\n\n/* 有限事件表：source+eventId -> 事件对象。 */\nvar xthbEvents = {};\n\n/* 基线快照：source -> { sequence: number, parts: { part -> 意图 } }。 */\nvar xthbBaselines = {};\n\n/* 每个 source 的基线序号栅栏。stop_all 清状态但保留栅栏（协议 §2）。 */\nvar xthbBaselineSeq = {};\n\n/* 上次写进变量的输出值。值没变就不写、不启动 Job（唯一的优化）。 */\nvar xthbWritten = null;\n\n/* 值归零时是否还启动一次输出 Job（用于把归零真正推给设备）。 */\nvar xthbForceWrite = false;\n\n/* 运行期诊断计数（只在日志里用，措辞必须遵守 §3.4）。 */\nvar xthbTicks = 0;\nvar xthbCallsOK = 0;\nvar xthbRejected = 0;\nvar xthbLastError = \"\";\n\n/* =====================================================================\n * 3. 小工具（全部 ES5）\n * ===================================================================== */\n\nfunction xthbNowMs() {\n  if (typeof Date === \"undefined\") {\n    return 0;\n  }\n  if (typeof Date.now === \"function\") {\n    return Date.now();\n  }\n  return new Date().getTime();\n}\n\nfunction xthbLog(text) {\n  /* console.log 在 XToys 里可能不存在或被禁用，必须包住（§6）。 */\n  try {\n    if (typeof console !== \"undefined\" && console && console.log) {\n      console.log(\"[xthb] \" + text);\n    }\n  } catch (logErr) {\n    /* 日志失败不影响业务；不写入任何硬件状态。 */\n  }\n}\n\nfunction xthbSetVar(name, value) {\n  return XTHB_setVariable(name, value);\n}\n\nfunction xthbStartJob(jobName) {\n  return XTHB_callAction({ type: \"updateJob\", job: jobName, action: \"start\" });\n}\n\nfunction xthbIsFiniteNumber(value) {\n  if (typeof value !== \"number\") {\n    return false;\n  }\n  if (value !== value) {\n    return false;\n  }\n  if (value === Infinity || value === -Infinity) {\n    return false;\n  }\n  return true;\n}\n\nfunction xthbClamp(value, low, high) {\n  if (value < low) {\n    return low;\n  }\n  if (value > high) {\n    return high;\n  }\n  return value;\n}\n\nfunction xthbRequireNumber(value, low, high) {\n  if (!xthbIsFiniteNumber(value)) {\n    return null;\n  }\n  return xthbClamp(value, low, high);\n}\n\nfunction xthbIsNonEmptyString(value) {\n  return typeof value === \"string\" && value.length > 0;\n}\n\nfunction xthbIsArray(value) {\n  return typeof value === \"object\" && value !== null &&\n    typeof value.length === \"number\" && typeof value.push === \"function\";\n}\n\nfunction xthbHasOwn(obj, key) {\n  return Object.prototype.hasOwnProperty.call(obj, key);\n}\n\nfunction xthbCanonicalDirection(value) {\n  var lowered;\n  if (!xthbIsNonEmptyString(value)) {\n    return null;\n  }\n  lowered = value.toLowerCase();\n  if (lowered === \"clockwise\") {\n    return XTHB_DIR_CLOCKWISE;\n  }\n  if (lowered === \"counterclockwise\") {\n    return XTHB_DIR_COUNTERCLOCKWISE;\n  }\n  return null;\n}\n\nfunction xthbFail(code, detail) {\n  var message = detail ? code + \": \" + detail : code;\n  xthbRejected = xthbRejected + 1;\n  xthbLastError = message;\n  xthbLog(\"rejected \" + message);\n  return { ok: false, code: code };\n}\n\n/* =====================================================================\n * 4. 配置\n * ===================================================================== */\n\n/*\n * 配置 JSON（由 Initial Actions 写入 xthb-config-json）：\n *\n *   {\n *     \"protocolVersion\": 1,\n *     \"parts\": [\"clitoris\", \"vagina\", ...],          // 允许的逻辑部位\n *     \"channels\": {\n *       \"estim\":    { \"intensity\": \"part-estim-a\",    \"frequency\": \"part-estim-a\" },\n *       \"vibrator\": { \"intensity\": \"part-vibrator-a\" },\n *       \"rotator\":  { \"volume\": \"part-rotator-a\", \"direction\": \"part-rotator-a\" }\n *     },\n *     \"routing\": { \"mode\": \"broadcast-intensity\" }\n *   }\n *\n * 关于 routing.mode：\n *   HANDOFF.md §8 阶段 0 只做 3 条输出路径，而协议有 12 个逻辑叶子部位。\n *   本阶段采用「全部部位广播给所有强度/振动通道」的临时规则：\n *   任何部位的强度意图都会同时参与 estim 与 vibrator 两个通道的仲裁，\n *   旋转通道只接受显式 rotateSpeed（协议 §3：旋转不从 intensity 推导）。\n *   part -> 通道的正式映射规则留到下一轮协议讨论时替换 xthbChannelMapFor()。\n */\n\nfunction xthbParseConfig() {\n  var raw = XTHB_getVariable(XTHB_VAR_CONFIG);\n  var parsed;\n  var parts = [];\n  var index;\n\n  if (!xthbIsNonEmptyString(raw)) {\n    return xthbFail(\"invalid_config\", XTHB_VAR_CONFIG + \" 未设置或非字符串\");\n  }\n  try {\n    parsed = JSON.parse(raw);\n  } catch (parseErr) {\n    return xthbFail(\"invalid_config\", \"配置不是合法 JSON\");\n  }\n  if (typeof parsed !== \"object\" || parsed === null) {\n    return xthbFail(\"invalid_config\", \"配置不是对象\");\n  }\n  if (parsed.protocolVersion !== XTHB_PROTOCOL_VERSION) {\n    return xthbFail(\"invalid_config\", \"配置 protocolVersion 不受支持\");\n  }\n  if (!xthbIsArray(parsed.parts) || parsed.parts.length === 0) {\n    return xthbFail(\"invalid_config\", \"配置缺少 parts 列表\");\n  }\n  for (index = 0; index < parsed.parts.length; index = index + 1) {\n    if (!xthbIsNonEmptyString(parsed.parts[index])) {\n      return xthbFail(\"invalid_config\", \"parts 含非字符串项\");\n    }\n    parts.push(parsed.parts[index]);\n  }\n  if (typeof parsed.channels !== \"object\" || parsed.channels === null) {\n    return xthbFail(\"invalid_config\", \"配置缺少 channels\");\n  }\n  parsed.parts = parts;\n  return { ok: true, config: parsed };\n}\n\nfunction xthbPartAllowed(part) {\n  var index;\n  for (index = 0; index < xthbConfig.parts.length; index = index + 1) {\n    if (xthbConfig.parts[index] === part) {\n      return true;\n    }\n  }\n  return false;\n}\n\n/* 阶段 0 的临时映射规则。下一轮换映射时只改这一个函数。 */\nfunction xthbChannelMapFor(part, channel) {\n  var spec = xthbConfig.channels[channel];\n  if (!spec || typeof spec !== \"object\") {\n    return false;\n  }\n  if (channel === XTHB_CH_ROTATOR) {\n    /* 旋转通道只由显式 rotateSpeed 驱动。 */\n    return true;\n  }\n  if (!spec.intensity) {\n    return false;\n  }\n  return xthbSpecAllowsPart(spec, part);\n}\n\n/*\n * 通道可按 parts 字段限定接受哪些部位；缺省 = 接受全部（广播）。\n * 例：{ \"intensity\": \"part-estim-a\", \"parts\": [\"clitoris\", \"anus\"] }\n */\nfunction xthbSpecAllowsPart(spec, part) {\n  var index;\n  if (!xthbIsArray(spec.parts) || spec.parts.length === 0) {\n    return true;\n  }\n  for (index = 0; index < spec.parts.length; index = index + 1) {\n    if (spec.parts[index] === part) {\n      return true;\n    }\n  }\n  return false;\n}\n\n/* =====================================================================\n * 5. targets 解析与校验\n * ===================================================================== */\n\nfunction xthbParseTarget(raw, index) {\n  var target = {};\n  var value;\n\n  if (typeof raw !== \"object\" || raw === null || xthbIsArray(raw)) {\n    return { error: \"targets[\" + index + \"] 不是对象\" };\n  }\n  if (!xthbIsNonEmptyString(raw.part)) {\n    return { error: \"targets[\" + index + \"].part 缺失\" };\n  }\n  target.part = raw.part;\n  if (!xthbPartAllowed(target.part)) {\n    return { error: \"unknown_part \" + target.part };\n  }\n\n  /* intensity / frequency：字段缺失 = 不驱动该槽；存在则必须是有限数。 */\n  if (xthbHasOwn(raw, \"intensity\") && raw.intensity !== null) {\n    value = xthbRequireNumber(raw.intensity, 0, 100);\n    if (value === null) {\n      return { error: \"targets[\" + index + \"].intensity 非法\" };\n    }\n    target.intensity = value;\n  }\n  if (xthbHasOwn(raw, \"frequency\") && raw.frequency !== null) {\n    value = xthbRequireNumber(raw.frequency, 0, 100);\n    if (value === null) {\n      return { error: \"targets[\" + index + \"].frequency 非法\" };\n    }\n    target.frequency = value;\n  }\n\n  /* rotateSpeed / rotateDirection：旋转槽，绝不由 intensity 推导。 */\n  if (xthbHasOwn(raw, \"rotateSpeed\") && raw.rotateSpeed !== null) {\n    value = xthbRequireNumber(raw.rotateSpeed, 0, 100);\n    if (value === null) {\n      return { error: \"targets[\" + index + \"].rotateSpeed 非法\" };\n    }\n    target.rotateSpeed = value;\n  }\n  if (xthbHasOwn(raw, \"rotateDirection\") && raw.rotateDirection !== null) {\n    target.rotateDirection = xthbCanonicalDirection(raw.rotateDirection);\n    if (target.rotateDirection === null) {\n      return { error: \"invalid_rotate_direction\" };\n    }\n  }\n  if (xthbHasOwn(raw, \"rotateSpeed\") && raw.rotateSpeed > 0) {\n    if (!target.rotateDirection) {\n      return { error: \"rotateSpeed > 0 时必须有 rotateDirection\" };\n    }\n  }\n\n  /* 有限事件字段。 */\n  if (xthbHasOwn(raw, \"durationMs\") && raw.durationMs !== null) {\n    value = xthbRequireNumber(raw.durationMs, 0, XTHB_MAX_DURATION_MS);\n    if (value === null) {\n      return { error: \"targets[\" + index + \"].durationMs 非法\" };\n    }\n    target.durationMs = value;\n  }\n  if (xthbHasOwn(raw, \"rampUpMs\") && raw.rampUpMs !== null) {\n    value = xthbRequireNumber(raw.rampUpMs, 0, XTHB_MAX_DURATION_MS);\n    if (value === null) {\n      return { error: \"targets[\" + index + \"].rampUpMs 非法\" };\n    }\n    target.rampUpMs = value;\n  }\n  if (xthbHasOwn(raw, \"rampDownMs\") && raw.rampDownMs !== null) {\n    value = xthbRequireNumber(raw.rampDownMs, 0, XTHB_MAX_DURATION_MS);\n    if (value === null) {\n      return { error: \"targets[\" + index + \"].rampDownMs 非法\" };\n    }\n    target.rampDownMs = value;\n  }\n  if (xthbHasOwn(raw, \"priority\") && raw.priority !== null) {\n    value = xthbRequireNumber(raw.priority, -1000000, 1000000);\n    if (value === null) {\n      return { error: \"targets[\" + index + \"].priority 非法\" };\n    }\n    target.priority = value;\n  }\n\n  return { target: target };\n}\n\nfunction xthbParseTargets(raw) {\n  var out = [];\n  var parsed;\n  var index;\n\n  if (!xthbIsArray(raw)) {\n    return { error: \"targets 不是数组\" };\n  }\n  if (raw.length > XTHB_MAX_TARGETS) {\n    return { error: \"targets 超过 \" + XTHB_MAX_TARGETS + \" 条\" };\n  }\n  for (index = 0; index < raw.length; index = index + 1) {\n    parsed = xthbParseTarget(raw[index], index);\n    if (parsed.error) {\n      return { error: parsed.error };\n    }\n    out.push(parsed.target);\n  }\n  return { targets: out };\n}\n\n/* 把 targets 转成 part -> 意图 的表；同一 part 出现多次时后者覆盖前者。 */\nfunction xthbTargetsToParts(targets) {\n  var map = {};\n  var index;\n  for (index = 0; index < targets.length; index = index + 1) {\n    map[targets[index].part] = targets[index];\n  }\n  return map;\n}\n\n/* =====================================================================\n * 6. 有限事件与基线\n * ===================================================================== */\n\nfunction xthbEventKey(source, eventId) {\n  return source + \"\\u0000\" + eventId;\n}\n\nfunction xthbCountEvents() {\n  var total = 0;\n  var key;\n  for (key in xthbEvents) {\n    if (xthbHasOwn(xthbEvents, key)) {\n      total = total + 1;\n    }\n  }\n  return total;\n}\n\nfunction xthbRemoveEvent(source, eventId) {\n  var key = xthbEventKey(source, eventId);\n  if (xthbHasOwn(xthbEvents, key)) {\n    delete xthbEvents[key];\n  }\n}\n\nfunction xthbApplyPlay(source, eventId, sequence, parts, finishAtMs) {\n  var key = xthbEventKey(source, eventId);\n  var existing = xthbHasOwn(xthbEvents, key) ? xthbEvents[key] : null;\n\n  /* 身份 = source + eventId；只有严格更大的 sequence 才替换（协议 §2）。 */\n  if (existing && sequence <= existing.sequence) {\n    return { error: \"invalid_sequence\" };\n  }\n  if (!existing && xthbCountEvents() >= XTHB_MAX_EVENTS) {\n    return { error: \"state_capacity_exceeded\" };\n  }\n  xthbEvents[key] = {\n    source: source,\n    eventId: eventId,\n    sequence: sequence,\n    parts: parts,\n    finishAtMs: finishAtMs\n  };\n  return { ok: true };\n}\n\nfunction xthbApplyStop(source, eventId, parts) {\n  var key;\n  var event;\n  var partNames;\n  var index;\n  var removed = 0;\n\n  /* 形式 1：只给 eventId —— 移除整个事件。 */\n  if (eventId !== null && parts === null) {\n    if (!xthbHasOwn(xthbEvents, xthbEventKey(source, eventId))) {\n      return { error: \"missing_stop_selector\" };\n    }\n    xthbRemoveEvent(source, eventId);\n    return { ok: true };\n  }\n\n  if (parts === null) {\n    return { error: \"missing_stop_selector\" };\n  }\n\n  /* 形式 2：eventId + targets —— 只移除该事件里列出的部位。 */\n  if (eventId !== null) {\n    key = xthbEventKey(source, eventId);\n    if (!xthbHasOwn(xthbEvents, key)) {\n      return { error: \"missing_stop_selector\" };\n    }\n    event = xthbEvents[key];\n    partNames = xthbPartNames(parts);\n    for (index = 0; index < partNames.length; index = index + 1) {\n      if (xthbHasOwn(event.parts, partNames[index])) {\n        delete event.parts[partNames[index]];\n        removed = removed + 1;\n      }\n    }\n    /* 没有剩余部位的事件直接丢弃，避免留下空壳。 */\n    if (xthbCountParts(event.parts) === 0) {\n      xthbRemoveEvent(source, eventId);\n    }\n    return { ok: true };\n  }\n\n  /* 形式 3：只给 targets —— 移除该来源所有事件里的这些部位。 */\n  partNames = xthbPartNames(parts);\n  for (key in xthbEvents) {\n    if (!xthbHasOwn(xthbEvents, key)) {\n      continue;\n    }\n    event = xthbEvents[key];\n    if (event.source !== source) {\n      continue;\n    }\n    for (index = 0; index < partNames.length; index = index + 1) {\n      if (xthbHasOwn(event.parts, partNames[index])) {\n        delete event.parts[partNames[index]];\n        removed = removed + 1;\n      }\n    }\n    if (xthbCountParts(event.parts) === 0) {\n      delete xthbEvents[key];\n    }\n  }\n  if (removed === 0) {\n    return { error: \"missing_stop_selector\" };\n  }\n  return { ok: true };\n}\n\nfunction xthbPartNames(parts) {\n  var names = [];\n  var key;\n  for (key in parts) {\n    if (xthbHasOwn(parts, key)) {\n      names.push(key);\n    }\n  }\n  return names;\n}\n\nfunction xthbCountParts(parts) {\n  var total = 0;\n  var key;\n  for (key in parts) {\n    if (xthbHasOwn(parts, key)) {\n      total = total + 1;\n    }\n  }\n  return total;\n}\n\nfunction xthbApplyBaseline(source, sequence, parts) {\n  if (xthbHasOwn(xthbBaselineSeq, source) && sequence <= xthbBaselineSeq[source]) {\n    return { error: \"invalid_sequence\" };\n  }\n  /* 基线是完整快照：新的 set_baseline 替换旧快照，遗漏的部位被清除（§2）。 */\n  xthbBaselines[source] = { sequence: sequence, parts: parts };\n  xthbBaselineSeq[source] = sequence;\n  return { ok: true };\n}\n\n/* =====================================================================\n * 7. 仲裁：算出每个通道当前应该输出什么\n * ===================================================================== */\n\n/*\n * 竞争规则（HANDOFF.md §7.2 / §12「同槽多事件竞争」）：\n *   1. priority 大者胜\n *   2. 相同 priority 时数值大者胜\n *   3. 再相同则 sequence 大者胜（更近的意图更贴合当前局面）\n * 基线参与者 priority 视为 0、sequence 用该来源的基线序号。\n */\nfunction xthbPickBetter(candidate, incumbent) {\n  if (incumbent === null) {\n    return true;\n  }\n  if (candidate.priority !== incumbent.priority) {\n    return candidate.priority > incumbent.priority;\n  }\n  if (candidate.value !== incumbent.value) {\n    return candidate.value > incumbent.value;\n  }\n  return candidate.sequence > incumbent.sequence;\n}\n\nfunction xthbCollectCandidates(metric, channel) {\n  var candidates = [];\n  var key;\n  var event;\n  var source;\n  var partNames;\n  var index;\n  var intent;\n  var raw;\n\n  /* 所有来源的基线快照。 */\n  for (source in xthbBaselines) {\n    if (!xthbHasOwn(xthbBaselines, source)) {\n      continue;\n    }\n    partNames = xthbPartNames(xthbBaselines[source].parts);\n    for (index = 0; index < partNames.length; index = index + 1) {\n      intent = xthbBaselines[source].parts[partNames[index]];\n      raw = xthbMetricValue(intent, metric);\n      if (raw === null) {\n        continue;\n      }\n      if (!xthbChannelMapFor(partNames[index], channel)) {\n        continue;\n      }\n      candidates.push({\n        value: raw,\n        priority: xthbIntentPriority(intent),\n        sequence: xthbBaselines[source].sequence,\n        source: source,\n        part: partNames[index],\n        intent: intent\n      });\n    }\n  }\n\n  /* 所有未到期的有限事件。 */\n  for (key in xthbEvents) {\n    if (!xthbHasOwn(xthbEvents, key)) {\n      continue;\n    }\n    event = xthbEvents[key];\n    partNames = xthbPartNames(event.parts);\n    for (index = 0; index < partNames.length; index = index + 1) {\n      intent = event.parts[partNames[index]];\n      raw = xthbMetricValue(intent, metric);\n      if (raw === null) {\n        continue;\n      }\n      if (!xthbChannelMapFor(partNames[index], channel)) {\n        continue;\n      }\n      candidates.push({\n        value: raw,\n        priority: xthbIntentPriority(intent),\n        sequence: event.sequence,\n        source: event.source,\n        part: partNames[index],\n        intent: intent\n      });\n    }\n  }\n  return candidates;\n}\n\nfunction xthbIntentPriority(intent) {\n  if (xthbIsFiniteNumber(intent.priority)) {\n    return intent.priority;\n  }\n  return 0;\n}\n\nfunction xthbMetricValue(intent, metric) {\n  if (metric === \"intensity\") {\n    if (xthbIsFiniteNumber(intent.intensity)) {\n      return intent.intensity;\n    }\n    return null;\n  }\n  if (metric === \"frequency\") {\n    if (xthbIsFiniteNumber(intent.frequency)) {\n      return intent.frequency;\n    }\n    return null;\n  }\n  if (metric === \"rotateSpeed\") {\n    if (xthbIsFiniteNumber(intent.rotateSpeed)) {\n      return intent.rotateSpeed;\n    }\n    return null;\n  }\n  return null;\n}\n\nfunction xthbArbitrate(metric, channel) {\n  var candidates = xthbCollectCandidates(metric, channel);\n  var winner = null;\n  var index;\n  for (index = 0; index < candidates.length; index = index + 1) {\n    if (xthbPickBetter(candidates[index], winner)) {\n      winner = candidates[index];\n    }\n  }\n  return winner;\n}\n\n/* 各通道的当前应输出值。 */\nfunction xthbComputeOutputs() {\n  var estim = xthbArbitrate(\"intensity\", XTHB_CH_ESTIM);\n  var vibrator = xthbArbitrate(\"intensity\", XTHB_CH_VIBRATOR);\n  var rotator = xthbArbitrate(\"rotateSpeed\", XTHB_CH_ROTATOR);\n  var frequency;\n  var out = {};\n\n  /*\n   * 阶段 0 的广播规则：estim 与 vibrator 各自做一次仲裁。当前映射下两者\n   * 接受同一批部位，所以结果相同；一旦开始在配置里按 parts 限定通道，\n   * 两条通道就会自然分叉，不需要改这里。\n   */\n  out.estim = xthbChannelOutput(estim, XTHB_CH_ESTIM);\n  out.vibrator = xthbChannelOutput(vibrator, XTHB_CH_VIBRATOR);\n  out.rotator = xthbChannelOutput(rotator, XTHB_CH_ROTATOR);\n\n  /*\n   * 频率跟随 estim 通道的强度赢家（同一个意图的两个槽），而不是独立再仲裁\n   * 一次 —— 否则频率可能来自另一个部位的事件，与正被驱动的位置不一致。\n   */\n  if (estim !== null && xthbIsFiniteNumber(estim.intent.frequency)) {\n    frequency = estim.intent.frequency;\n  } else {\n    frequency = 0;\n  }\n  out.estim.frequency = frequency;\n  return out;\n}\n\nfunction xthbChannelOutput(winner, channel) {\n  var spec = xthbConfig.channels[channel];\n  var value = 0;\n  var direction = 0;\n  var rampSeconds = 0;\n\n  if (!spec || typeof spec !== \"object\") {\n    return null;\n  }\n  if (winner === null) {\n    return {\n      value: 0,\n      direction: 0,\n      rampSeconds: 0,\n      source: \"\",\n      part: \"\",\n      sequence: -1\n    };\n  }\n  if (channel === XTHB_CH_ROTATOR) {\n    value = winner.value;\n    if (winner.intent.rotateDirection === XTHB_DIR_CLOCKWISE) {\n      direction = 1;\n    } else if (winner.intent.rotateDirection === XTHB_DIR_COUNTERCLOCKWISE) {\n      direction = -1;\n    }\n  } else {\n    value = winner.value;\n  }\n  rampSeconds = xthbRampSeconds(winner.intent, value);\n  return {\n    value: value,\n    direction: direction,\n    rampSeconds: rampSeconds,\n    source: winner.source,\n    part: winner.part,\n    sequence: winner.sequence\n  };\n}\n\n/*\n * rampTime 的单位在 docs/01-xtoys-script-format.md §4.2 仍标 ⚠️未独立验证\n * （变量名 \"ramp-seconds\" 暗示为秒）。这里统一按\"秒\"输出，真机验收时\n * 专门验一次；若不是秒，只改这一个函数。\n */\nfunction xthbRampSeconds(intent, value) {\n  var ms = 0;\n  if (value <= 0) {\n    if (xthbIsFiniteNumber(intent.rampDownMs)) {\n      ms = intent.rampDownMs;\n    }\n  } else if (xthbIsFiniteNumber(intent.rampUpMs)) {\n    ms = intent.rampUpMs;\n  }\n  if (ms < 0) {\n    ms = 0;\n  }\n  return ms / 1000;\n}\n\n/* =====================================================================\n * 8. 推给硬件：写变量 + 启动输出 Job\n * ===================================================================== */\n\nfunction xthbOutputsEqual(a, b) {\n  if (a === null || b === null) {\n    return a === b;\n  }\n  if (a.estim.value !== b.estim.value) { return false; }\n  if (a.estim.frequency !== b.estim.frequency) { return false; }\n  if (a.vibrator.value !== b.vibrator.value) { return false; }\n  if (a.rotator.value !== b.rotator.value) { return false; }\n  if (a.rotator.direction !== b.rotator.direction) { return false; }\n  return true;\n}\n\nfunction xthbPushOutputs(outputs) {\n  var changed = !xthbOutputsEqual(outputs, xthbWritten);\n  var started = 0;\n\n  if (!changed && !xthbForceWrite) {\n    return 0;\n  }\n  xthbForceWrite = false;\n\n  xthbSetVar(\"xthb-estim-value\", outputs.estim.value);\n  xthbSetVar(\"xthb-estim-frequency\", outputs.estim.frequency);\n  xthbSetVar(\"xthb-estim-ramp-seconds\", outputs.estim.rampSeconds);\n  xthbSetVar(\"xthb-vibrator-value\", outputs.vibrator.value);\n  xthbSetVar(\"xthb-vibrator-ramp-seconds\", outputs.vibrator.rampSeconds);\n  xthbSetVar(\"xthb-rotator-value\", outputs.rotator.value);\n  xthbSetVar(\"xthb-rotator-direction-code\", outputs.rotator.direction);\n  xthbSetVar(\"xthb-rotator-ramp-seconds\", outputs.rotator.rampSeconds);\n\n  /*\n   * 值真的变了（或需要强制归零）才启动输出 Job。这是唯一的防抖优化。\n   * 这里的成功只表示 callAction 没有同步抛异常，不代表设备收到了（§3.4）。\n   */\n  xthbStartJob(XTHB_OUT_ESTIM);\n  xthbStartJob(XTHB_OUT_VIBRATOR);\n  xthbStartJob(XTHB_OUT_ROTATOR);\n  started = 3;\n\n  xthbWritten = outputs;\n  return started;\n}\n\n/* =====================================================================\n * 9. 对外入口（Initial/Final Actions 与全局 Trigger 调用这些函数）\n * ===================================================================== */\n\nfunction xtoysBridgeInit() {\n  var parsed = xthbParseConfig();\n  var key;\n\n  xthbEvents = {};\n  xthbBaselines = {};\n  xthbBaselineSeq = {};\n  xthbWritten = null;\n  xthbTicks = 0;\n  xthbCallsOK = 0;\n  xthbRejected = 0;\n  xthbLastError = \"\";\n\n  if (!parsed.ok) {\n    xthbConfig = null;\n    xthbLog(\"init 失败：\" + parsed.code + \" —— tick 将保持静默、不驱动任何输出\");\n    return \"init_failed\";\n  }\n  xthbConfig = parsed.config;\n\n  /* 先把所有输出变量归零，避免上一次运行的残留值被输出 Job 读走。 */\n  for (key in xthbConfig.channels) {\n    if (!xthbHasOwn(xthbConfig.channels, key)) {\n      continue;\n    }\n    xthbZeroChannelVariables(key);\n  }\n  xthbForceWrite = true;\n  xthbSetVar(\"xthb-status\", \"running\");\n  xthbLog(\"初始化完成：部件 \" + xthbConfig.parts.length + \" 个，通道 \" +\n    xthbChannelNames().length + \" 个\");\n  return \"initialized\";\n}\n\nfunction xthbChannelNames() {\n  var names = [];\n  var key;\n  for (key in xthbConfig.channels) {\n    if (xthbHasOwn(xthbConfig.channels, key)) {\n      names.push(key);\n    }\n  }\n  return names;\n}\n\nfunction xthbZeroChannelVariables(channel) {\n  if (channel === XTHB_CH_ESTIM) {\n    xthbSetVar(\"xthb-estim-value\", 0);\n    xthbSetVar(\"xthb-estim-frequency\", 0);\n    xthbSetVar(\"xthb-estim-ramp-seconds\", 0);\n    return;\n  }\n  if (channel === XTHB_CH_VIBRATOR) {\n    xthbSetVar(\"xthb-vibrator-value\", 0);\n    xthbSetVar(\"xthb-vibrator-ramp-seconds\", 0);\n    return;\n  }\n  if (channel === XTHB_CH_ROTATOR) {\n    xthbSetVar(\"xthb-rotator-value\", 0);\n    xthbSetVar(\"xthb-rotator-direction-code\", 0);\n    xthbSetVar(\"xthb-rotator-ramp-seconds\", 0);\n  }\n}\n\n/* 100 ms 调度 Job 调这个。它只计算、比较、必要时写变量 + 启动输出 Job。 */\nfunction xtoysBridgeTick() {\n  var nowMs;\n  var key;\n  var expired = 0;\n  var outputs;\n\n  if (xthbConfig === null) {\n    return \"not_initialized\";\n  }\n  nowMs = xthbNowMs();\n  xthbTicks = xthbTicks + 1;\n\n  /* 到期清理。 */\n  for (key in xthbEvents) {\n    if (!xthbHasOwn(xthbEvents, key)) {\n      continue;\n    }\n    if (xthbEvents[key].finishAtMs <= nowMs) {\n      delete xthbEvents[key];\n      expired = expired + 1;\n    }\n  }\n\n  outputs = xthbComputeOutputs();\n  xthbPushOutputs(outputs);\n\n  xthbSetVar(\"xthb-status\", \"running\");\n  xthbSetVar(\"xthb-tick-count\", xthbTicks);\n  xthbSetVar(\"xthb-active-events\", xthbCountEvents());\n  xthbSetVar(\"xthb-calls-ok\", xthbCallsOK);\n  xthbSetVar(\"xthb-rejected-count\", xthbRejected);\n  xthbSetVar(\"xthb-last-error\", xthbLastError);\n  return \"tick\";\n}\n\n/*\n * 全局 Trigger 入口。payload 是 Webhook body 里固定的外层对象：\n *   { \"action\": \"xtoys_game_bridge\", \"payload\": \"<内层协议对象的 JSON 字符串>\" }\n */\nfunction xtoysBridgeHandle(payload) {\n  var outer;\n  var inner;\n  var parsed;\n  var result;\n\n  if (xthbConfig === null) {\n    return xthbFail(\"invalid_config\", \"运行时未初始化\");\n  }\n  if (typeof payload !== \"string\" || payload.length === 0) {\n    return xthbFail(\"invalid_payload\", \"载荷为空或非字符串\");\n  }\n  if (payload.length > XTHB_MAX_PAYLOAD_CHARS) {\n    return xthbFail(\"invalid_payload\", \"载荷超过 \" + XTHB_MAX_PAYLOAD_CHARS + \" 字符\");\n  }\n  try {\n    outer = JSON.parse(payload);\n  } catch (outerErr) {\n    return xthbFail(\"invalid_json\", \"外层不是合法 JSON\");\n  }\n  if (typeof outer !== \"object\" || outer === null) {\n    return xthbFail(\"invalid_payload\", \"外层不是对象\");\n  }\n  if (outer.action !== \"xtoys_game_bridge\") {\n    return xthbFail(\"invalid_payload\", \"外层 action 不是 xtoys_game_bridge\");\n  }\n  if (typeof outer.payload !== \"string\") {\n    return xthbFail(\"invalid_payload\", \"外层 payload 不是字符串\");\n  }\n  try {\n    inner = JSON.parse(outer.payload);\n  } catch (innerErr) {\n    return xthbFail(\"invalid_json\", \"内层 payload 不是合法 JSON\");\n  }\n  if (typeof inner !== \"object\" || inner === null) {\n    return xthbFail(\"invalid_payload\", \"内层不是对象\");\n  }\n\n  parsed = xthbParseCommand(inner);\n  if (parsed.error) {\n    return xthbFail(parsed.error);\n  }\n  result = xthbExecute(parsed);\n  if (result.ok) {\n    xthbCallsOK = xthbCallsOK + 1;\n  }\n  return result;\n}\n\n/* 解析内层协议对象；不做任何状态改动。 */\nfunction xthbParseCommand(inner) {\n  var command;\n  var targets = null;\n  var seq = null;\n  var durationMs = 0;\n  var maxDuration = 0;\n  var index;\n\n  if (inner.protocolVersion !== XTHB_PROTOCOL_VERSION) {\n    return { error: \"unsupported_protocol_version\" };\n  }\n  command = inner.command;\n  if (command !== XTHB_CMD_PLAY && command !== XTHB_CMD_UPDATE &&\n    command !== XTHB_CMD_STOP && command !== XTHB_CMD_SET_BASELINE &&\n    command !== XTHB_CMD_STOP_ALL && command !== XTHB_CMD_TEST) {\n    return { error: \"unsupported_command\" };\n  }\n  if (!xthbIsNonEmptyString(inner.source) || inner.source.length > XTHB_MAX_ID_CHARS) {\n    return { error: \"missing_source\" };\n  }\n\n  if (command === XTHB_CMD_STOP_ALL) {\n    /* stop_all 不需要 eventId/sequence —— 它必须永远能执行（紧急全停）。 */\n    return { command: command, source: inner.source, eventId: null, targets: null, sequence: null };\n  }\n\n  if (command === XTHB_CMD_STOP) {\n    if (xthbHasOwn(inner, \"eventId\") && inner.eventId !== null) {\n      if (!xthbIsNonEmptyString(inner.eventId) || inner.eventId.length > XTHB_MAX_ID_CHARS) {\n        return { error: \"missing_event_id\" };\n      }\n    }\n    if (xthbHasOwn(inner, \"targets\") && inner.targets !== null) {\n      targets = xthbParseTargets(inner.targets);\n      if (targets.error) {\n        return { error: \"invalid_targets\" };\n      }\n      targets = targets.targets;\n    } else {\n      targets = null;\n    }\n    return {\n      command: command,\n      source: inner.source,\n      eventId: xthbHasOwn(inner, \"eventId\") && inner.eventId !== null ? inner.eventId : null,\n      targets: targets,\n      sequence: null\n    };\n  }\n\n  /* play / update / set_baseline / test 都需要 sequence。 */\n  if (!xthbIsFiniteNumber(inner.sequence) || inner.sequence < 0) {\n    return { error: \"invalid_sequence\" };\n  }\n  seq = inner.sequence;\n\n  if (command === XTHB_CMD_SET_BASELINE || command === XTHB_CMD_TEST) {\n    if (!xthbHasOwn(inner, \"targets\") || inner.targets === null) {\n      return { error: \"missing_targets\" };\n    }\n    targets = xthbParseTargets(inner.targets);\n    if (targets.error) {\n      return { error: \"invalid_targets\" };\n    }\n    return {\n      command: command,\n      source: inner.source,\n      eventId: null,\n      targets: targets.targets,\n      sequence: seq\n    };\n  }\n\n  /* play / update。 */\n  if (!xthbIsNonEmptyString(inner.eventId) || inner.eventId.length > XTHB_MAX_ID_CHARS) {\n    return { error: \"missing_event_id\" };\n  }\n  if (!xthbHasOwn(inner, \"targets\") || inner.targets === null) {\n    return { error: \"missing_targets\" };\n  }\n  targets = xthbParseTargets(inner.targets);\n  if (targets.error) {\n    return { error: \"invalid_targets\" };\n  }\n\n  /* play/update 的每个目标必须有正 durationMs（协议 §3）。 */\n  for (index = 0; index < targets.targets.length; index = index + 1) {\n    durationMs = targets.targets[index].durationMs;\n    if (!xthbIsFiniteNumber(durationMs) || durationMs <= 0) {\n      return { error: \"invalid_duration\" };\n    }\n    if (durationMs > maxDuration) {\n      maxDuration = durationMs;\n    }\n  }\n  return {\n    command: command,\n    source: inner.source,\n    eventId: inner.eventId,\n    targets: targets.targets,\n    sequence: seq,\n    durationMs: maxDuration\n  };\n}\n\nfunction xthbExecute(parsed) {\n  var key;\n  var parts;\n\n  if (parsed.command === XTHB_CMD_STOP_ALL) {\n    /* 紧急全停：清掉所有基线与有限事件，保留序号栅栏；写零并推给设备。 */\n    xthbEvents = {};\n    xthbBaselines = {};\n    xthbForceWrite = true;\n    xthbSetVar(\"xthb-status\", \"stopped_all\");\n    xthbLog(\"stop_all：状态已清空，正在把归零推给输出 Job（不保证设备已收到）\");\n    xthbPushOutputs(xthbComputeOutputs());\n    return { ok: true, code: \"stopped_all\" };\n  }\n\n  if (parsed.command === XTHB_CMD_TEST) {\n    /* 只解析不驱动硬件：不写输出变量、不启动 Job。 */\n    return { ok: true, code: \"validated\" };\n  }\n\n  if (parsed.command === XTHB_CMD_SET_BASELINE) {\n    parts = xthbTargetsToParts(parsed.targets);\n    return xthbApplyBaseline(parsed.source, parsed.sequence, parts);\n  }\n\n  if (parsed.command === XTHB_CMD_STOP) {\n    return xthbApplyStop(parsed.source, parsed.eventId, parsed.targets === null ? null : xthbTargetsToParts(parsed.targets));\n  }\n\n  /* play / update 语义相同：整集替换，靠 sequence 判断新旧。 */\n  parts = xthbTargetsToParts(parsed.targets);\n  return xthbApplyPlay(parsed.source, parsed.eventId, parsed.sequence, parts,\n    xthbNowMs() + parsed.durationMs);\n}\n\n/* Final Actions 调这个：脚本停止时把每个通道写成零。 */\nfunction xtoysBridgeStopAll() {\n  var channelNames;\n  var index;\n\n  xthbEvents = {};\n  xthbBaselines = {};\n  xthbForceWrite = false;\n  xthbWritten = null;\n\n  if (xthbConfig === null) {\n    /* 即使初始化失败也要努力写出零值，虽然 UI 归零 Action 才是硬保障。 */\n    xthbSetVar(\"xthb-estim-value\", 0);\n    xthbSetVar(\"xthb-estim-frequency\", 0);\n    xthbSetVar(\"xthb-vibrator-value\", 0);\n    xthbSetVar(\"xthb-rotator-value\", 0);\n    xthbSetVar(\"xthb-rotator-direction-code\", 0);\n    xthbSetVar(\"xthb-status\", \"stopped\");\n    return \"stopped\";\n  }\n  channelNames = xthbChannelNames();\n  for (index = 0; index < channelNames.length; index = index + 1) {\n    xthbZeroChannelVariables(channelNames[index]);\n  }\n  xthbSetVar(\"xthb-status\", \"stopped\");\n  xthbLog(\"已把全部输出变量写为零；硬件归零由 Final Actions 的显式 Action 负责\");\n  return \"stopped\";\n}\n"
+}
