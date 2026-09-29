@@ -97,6 +97,23 @@
 
 这两条都**尚未落到代码**（当前骨架仍是白名单 + 只比数值）。
 
+### 4.2 频率缺省语义（2026-09-30 定，用户指出）
+
+**`frequency` 的缺省值 = XToys 上设备当前的值，即"不变动"，不是置零。**
+这是三条指标里唯一不遵守"缺省即归零"的一条：`intensity`/`rotateSpeed` 描述刺激量，
+缺省归零正确；而 `frequency` 是 E-Stim 的**调制设置**，`intensity=0` 时设备本就无输出，
+写 0 只会改变下一次输出的手感。
+
+连带要改的地方（都比 B6 那一格影响大）：
+
+1. **输出 Job 的 `setFrequency` 必须变成条件动作** —— 用哨兵值区分"没有频率意图"与
+   "频率 = 0"，再用 `requiredExpression` 门控。
+2. **Initial Actions 不得把频率归零**（`docs/01` §7 里旧的 `setFrequency=0` 不沿用）。
+3. **Final Actions 不需要 `setFrequency`** —— 归零的是音量。
+4. `setMode` 同属设置项，**是否保留为固定动作待确认**。
+
+见 `docs/03-protocol-mapping.md` §4.5。
+
 下一步是**动代码**（用户要求讨论完成后再开工）。骨架**已提交**为可回退检查点
 （`76ae08e`，按旧广播模型），远端 `origin/master` 已同步。
 
@@ -108,16 +125,17 @@
 1. 修 §2 的缺陷 1–3，跑通生成 + 测试，形成有效检查点。
 2. 按 `docs/03-protocol-mapping.md` 改代码，改动只落在：
    - `tools/build-xtoys-script.mjs`：按映射表生成 **9 组** channel + Job + 变量（不是 8 组）；
-     `BRIDGE_CONFIG` 换成 §3 形状；命名按 §2.1。
+     `BRIDGE_CONFIG` 换成 §3 形状；命名按 §2.1；
+     **输出 Job 的 `setFrequency` 改成条件动作**、Initial/Final Actions 去掉频率归零（§4.2）。
    - `src/xtoys-bridge.js`：
-     - `xthbChannelMapFor()` 改查映射表；候选收集按 part 分组；
+     - `xthbChannelMapFor()` 改查映射表；候选收集按 part 分组（`channels[metric]` → `parts[part][metric]`）；
      - **删除部位白名单**（§4.1 第 2 条）；
      - **推送判据加入 `driveId`**（§4.1 第 1 条）；
+     - **频率缺省写哨兵值而非 0**（§4.2）；
      - 加"Block 专属一个 part"校验；加被忽略指标留痕；加同部位重复 target 拒绝；
      - 按 §6.2 调整指标校验（`rotateSpeed: 0` 允许无方向）。
 3. 再写 `docs/minimal-script-build.md` 与 `tools/Invoke-XtoysAcceptance.ps1`。
 4. 真机验收：E-Stim + 振动器可完整跑；`Rotate-nipple` 标注未验证。
 5. 验收后把实测差异补进 `docs/01-xtoys-script-format.md` §8。
 
-> ⚠️ `git status` 里 `src/`、`tools/`、`examples/*` 都是**未跟踪**的新文件。
-> 本轮结束时**没有任何提交**，工作区除这些新文件外干净。
+> ✅ 骨架已提交（`8eebf78` … `76ae08e`，`origin/master` 已同步），工作区干净。

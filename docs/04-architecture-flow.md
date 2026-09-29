@@ -149,11 +149,16 @@ sequenceDiagram
 | 触发 | 做什么 | 对应实现 |
 | --- | --- | --- |
 | 收到 `stop_all` | 清空全部基线与事件（**保留每个 source 的基线序号栅栏**）→ 立即写零并推给输出 Job | `xthbExecute` 的 `stop_all` 分支 |
-| 用户手动停 Script | `finalActions`：JS 归零函数 → 停调度 Job → **显式 UI 归零每个 Block** → 停所有输出 Job | `finalActions` |
+| 用户手动停 Script | `finalActions`：JS 归零函数 → 停调度 Job → **显式 UI 归零每个 Block 的音量** → 停所有输出 Job | `finalActions` |
 | JS 抛错 / 运行时未初始化 | 上面的**显式 UI 归零 Action 仍然执行** —— 这是唯一的硬件停止保障 | 语法 §7 |
 
 **这三条是并列的**，不是二选一：JS 侧归零负责变量与状态，Final Actions 的 UI Action
 负责在 JS 已经坏掉时仍然把硬件写到零。
+
+> ⚠️ **归零 = 归零音量，不包括频率。** `frequency` 是 E-Stim 的调制设置而非刺激量，
+> 缺省语义是"保持设备当前值"。所以 Initial / Final Actions 都**不**写频率，
+> 输出 Job 里的 `setFrequency` 也必须由"本次是否有频率意图"门控。
+> 见 `docs/03-protocol-mapping.md` §4.5 与 `docs/01-xtoys-script-format.md` §7。
 
 ---
 
@@ -181,11 +186,14 @@ xthbWritten     : { <channel> → { value, frequency, rampSeconds, driveId } }
 | --- | --- | --- |
 | `xthb-{metric}-{part}-value` | 目标值 0–100 | `setVolume.percentVolume` |
 | `xthb-{metric}-{part}-ramp-seconds` | 渐变秒数 | `setVolume.rampTime` |
-| `xthb-estim-{part}-frequency` | 频率 0–100 | `setFrequency.frequencyPercent` |
+| `xthb-estim-{part}-frequency` | 频率 0–100；**哨兵值 `""` = 本次不驱动频率** | `setFrequency.frequencyPercent`（带 `requiredExpression` 门控） |
 | `xthb-rotate-{part}-direction-code` | `1` 顺 / `-1` 逆 / `0` 无 | `setDirection.requiredExpression` |
 
 > ⚠️ `rampTime` 单位是**秒**这一条在 `docs/01-xtoys-script-format.md` §4.2 仍标 ⚠️未独立验证，
 > 真机验收时要专门验一次（`HANDOFF.md` §9.1）。
+>
+> ⚠️ 频率变量的哨兵值形式（`""` 还是别的）待实现时定；要点是必须能把
+> "没有频率意图"与"频率 = 0"区分开，见 `docs/03-protocol-mapping.md` §4.5。
 
 ---
 
@@ -199,11 +207,14 @@ xthbWritten     : { <channel> → { value, frequency, rampSeconds, driveId } }
    ↑ 方向必须排在速度之前，否则换向慢一拍（HANDOFF §4.3）
 ③ setVolume  rampTime={ramp-seconds}  percentVolume={value}
 ④ E-Stim 专属：setFrequency format=relative frequencyPercent={frequency}
+   ↑ 【条件动作】只有本次有频率意图才发。频率缺省 = 保持设备当前值，不是置零
+     （必须用 requiredExpression 门控，见映射 §4.5）
 ⑤ updateJob stop（停自己）
 ```
 
 - 强度槽与振动槽不需要 ① ② ④，只有 ③ ⑤。
-- `requiredExpression` 为假的 Action 不生效，所以两个方向 Action 可以并列放着。
+- `requiredExpression` 为假的 Action 不生效，所以两个方向 Action 可以并列放着；
+  ④ 的频率门控也用同一机制。
 - **未使用的 Job 也应保留**（步骤里只放"停自己"），且不接任何设备（语法 §3）。
 
 ---
@@ -266,6 +277,8 @@ xthbWritten     : { <channel> → { value, frequency, rampSeconds, driveId } }
 - [ ] 仲裁只在同一部位内部：`priority` → 数值 → `sequence`。
 - [ ] `frequency` 跟随强度 winner，不独立仲裁。
 - [ ] 推送条件 = **数值 或 驱动者身份（driveId）** 变化；稳定态仍然跳过。
+- [ ] **频率缺省 ≠ 0**：缺省 = 保持设备当前值，输出 Job 的 `setFrequency` 必须被门控。
+- [ ] Initial / Final Actions **不写频率**（归零的是音量）。
 - [ ] 旋转 Job 里两个 `setDirection` 排在 `setVolume` 之前。
 - [ ] `stop_all`、JS 归零函数、Final Actions 显式 UI 归零 —— 三条都要有。
 - [ ] 绝不调用任何设置最大强度/最大旋转速度的接口。

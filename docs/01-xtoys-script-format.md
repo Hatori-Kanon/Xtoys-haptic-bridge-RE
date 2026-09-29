@@ -252,6 +252,13 @@ Script 的全局 JavaScript 运行在 **XToys JS-Interpreter** 中，约束：
 
 **这些显式 UI 归零 Action 是强制项。** JS 也会归零变量，但当 JS 抛错、运行时未初始化或 Job 刷新失败时，Final Actions 是唯一的硬件停止保障。它们只写"当前输出 = 0"，**不修改设备最大强度或最大旋转速度**。
 
+> ⚠️ **频率与模式不属于"归零"范畴（2026-09-30 定）。**
+> `frequency` 是 E-Stim 的**调制设置**，不是刺激量：`intensity = 0` 时设备本来就无输出。
+> 因此 **Initial / Final Actions 都不应该把频率归零** —— 音频归零只需 `setVolume = 0`。
+> 频率的缺省语义是"保持设备当前值"，规则见 `docs/03-protocol-mapping.md` §4.5。
+> 上面 1. 与 3. 里写的 `setFrequency=0` 属于旧参考实现的做法，本项目**不沿用**。
+> `setMode` 同属设置项而非当前输出值，**是否保留为固定动作待确认**。
+
 ---
 
 ## 8. 已知 / 未知清单

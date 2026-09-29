@@ -170,7 +170,7 @@ winner 决定该 Block 的**全部**字段：
 | 字段 | 算法 |
 | --- | --- |
 | `value` | winner 的该 metric 值（解析时已夹到 0–100）；**无候选 → 0** |
-| `frequency` | 只对 estim Block：**跟随同一个 winner** 的 `intent.frequency`；无则 `0` |
+| `frequency` | 只对 estim Block：**跟随同一个 winner** 的 `intent.frequency`；**winner 没有 `frequency` 字段 → `null`（不驱动、不改变设备当前频率）**，见 §4.5 |
 | `direction` | 只对 rotate Block：`clockwise`→`1`，`counterclockwise`→`-1`；无候选 → `0` |
 | `rampSeconds` | `value <= 0` 用 `intent.rampDownMs`，否则用 `intent.rampUpMs`；`/ 1000`；负值视为 `0` |
 
@@ -181,6 +181,38 @@ winner 决定该 Block 的**全部**字段：
 - **ramp 是设备级动作，不是 JS 算的曲线。** JS 只算出"这次写值该用多少秒渐变"，
   真正执行渐变的是 XToys 的 `setVolume.rampTime`。所以 §4.4 必须把 `rampSeconds`
   也算进推送条件。
+
+### 4.5 缺省频率 = 保持设备当前值（唯一"缺省 ≠ 0"的指标）
+
+**用户明确的规则：`frequency` 的缺省值应该是 XToys 上当前的值，也就是"不变动"，而不是置零。**
+
+这是三条指标里**唯一**不遵守"缺省即归零"的一条，原因是语义不同：
+
+- `intensity` / `rotateSpeed` 描述"这个执行器现在该出多大力"。缺省 → 没有驱动者 →
+  写 **0**（停这个执行器）是对的。
+- `frequency` 在 E-Stim 上是**调制方式**，不是刺激量。`intensity = 0` 时设备本来就无输出，
+  此时把频率写 0 毫无意义，反而会改变下一次输出的手感/音色。
+
+因此规则是：
+
+| 情况 | 行为 |
+| --- | --- |
+| winner 的意图**带** `frequency`（含显式 `0`） | 写该值 → 输出 Job 发 `setFrequency` |
+| winner 的意图**没有** `frequency` 字段 | **不发 `setFrequency`**，设备频率保持原样 |
+| 该部位没有 estim Block | 忽略该指标（§6.2） |
+
+**结构性后果**：输出 Job 里 `setFrequency` 这条 Action **不能无条件存在**，
+必须由"本次是否有频率意图"控制。实现上需要一个哨兵值把"没有频率"与"频率 = 0"
+区分开（例如频率变量写 `""` 表示不驱动），再用 `requiredExpression` 门控那条 Action。
+
+**连带影响（都要改）**：
+
+1. **Initial Actions 不得把频率归零** —— 启动时保持设备当前频率，只是音量归零。
+   这与"启动时把所有已绑定 Block 归零"的安全要求不冲突：归零的是**音量**。
+2. **Final Actions 不需要 `setFrequency`** —— 音频停止只需 `setVolume = 0`；
+   频率是设置项，不是输出，停 Script 时没有理由动它。
+3. **`setMode` 同属"设置项"**（不是当前输出值），只在真的需要时发，
+   不作为每次归零的一部分。**待确认**：是否保留为固定动作。
 
 ### 4.4 推送条件：值 **或** 驱动者身份变化就要推
 
