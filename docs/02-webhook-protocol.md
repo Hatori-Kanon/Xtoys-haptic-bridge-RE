@@ -100,6 +100,28 @@ Webhook POST 到 `https://webhook.xtoys.app/<Webhook ID>`，`Content-Type: appli
 
 完整规则（忽略、拒绝、留痕的边界）见 **`docs/03-protocol-mapping.md`** §6.2 / §6.5。
 
+### 3.2 基线快照：漏写的通道会被清除（含真机实测）
+
+基线是**按 source 保存的完整快照**：新的 `set_baseline` 替换旧快照，**遗漏的部位被清除**。
+
+> ⚠️ **"遗漏"的粒度一直到通道：漏写某个强度字段会清掉那条通道的基线。**
+> 例：快照里 `nipple` 只写了 `estimIntensity`、没写 `vibrateIntensity`
+> → **该部位的 vibrate 基线被清除（振动停止）**，不是"保持不变"。
+>
+> ✅ **真机实测（2026-10-05）**：
+> - 步骤 2 用 `vibrateIntensity:25` 建立 nipple 振动基线后，**一直持续开着**
+>   （用户观察：直到步骤 9 重设基线才变）。
+> - 期间步骤 3/4b/5/6 的 `play` 事件只带 `estimIntensity` —— 它们**不影响**振动基线，
+>   因为事件不带 vibrate 值就不参与 vibrate 仲裁。这同时证明了
+>   `estimIntensity` 与 `vibrateIntensity` 已真正分开。
+> - 但只要发一条新的 `set_baseline` 而里面没写 vibrate，振动基线就被清掉。
+>
+> **游戏侧发持续状态时，必须把该部位所有需要持续的通道一起写进同一条快照。**
+
+`stop_all` 清除所有来源的当前状态，但**每个 source 的基线序号栅栏要保留** —— 停机后
+同一 source 的下一条 `set_baseline` 仍必须用更大的 `sequence`。Bridge 重启后要么持久化
+序号，要么换新的 `source`。
+
 ---
 
 ## 4. 逻辑部位（叶子）
