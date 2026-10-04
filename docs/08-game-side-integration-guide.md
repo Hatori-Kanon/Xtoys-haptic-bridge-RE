@@ -513,19 +513,16 @@ function postCommand(inner) {
   // ⚠️ 不要用返回值判断是否生效：HTTP 200 也可能被拒绝，见 §1.1
 }
 
-// 有限事件（一次命中）
-function sendHit(part, opts) {
+// ── 构造一条 target（不发送，只组装）──
+// opts 里只写你真正想驱动的通道；不写 = 不驱动那条通道
+function buildTarget(part, opts) {
   opts = opts || {};
-  var eid = opts.eventId || (part + '-' + Date.now());
-  eventSeq[eid] = (eventSeq[eid] || 0) + 1;
-
   var t = {
     part: part,
-    durationMs: opts.durationMs || 900,
+    durationMs: (opts.durationMs != null) ? opts.durationMs : 900,
     rampUpMs:   opts.rampUpMs   || 0,
     rampDownMs: opts.rampDownMs || 0
   };
-  // 只写你真正想驱动的通道（不写 = 不驱动那条通道）
   if (opts.estim   != null) t.estimIntensity   = opts.estim;
   if (opts.vibrate != null) t.vibrateIntensity = opts.vibrate;
   if (opts.rotateSpeed != null) {
@@ -535,15 +532,37 @@ function sendHit(part, opts) {
   // frequency：想改才写；不写 = 保持设备当前频率
   if (opts.frequency != null) t.frequency = opts.frequency;
   if (opts.priority  != null) t.priority  = opts.priority;
+  return t;
+}
 
+// ── 【推荐】发一个有限事件，可以带多个部位 ──
+//   全身/泛用类事件请一次传多个 part（§4.6），不要循环调用单部位版本：
+//   多部位合并在同一条命令里 = 只发 1 次 POST。
+//   注意：一个 part 在数组里只能出现一次（§3.2 规则一）。
+function sendEvent(parts, opts) {
+  opts = opts || {};
+  var eid = opts.eventId || ('ev-' + Date.now());
+  eventSeq[eid] = (eventSeq[eid] || 0) + 1;
+
+  var targets = [];
+  for (var i = 0; i < parts.length; i++) {
+    targets.push(buildTarget(parts[i], opts));
+  }
   postCommand({
     protocolVersion: 1, command: 'play', source: SOURCE,
-    eventId: eid, sequence: eventSeq[eid], targets: [t]
+    eventId: eid, sequence: eventSeq[eid], targets: targets
   });
+  return eid;
+}
+
+// ── 单部位便捷写法（内部就是上面那个，不是另一条路径）──
+function sendHit(part, opts) {
+  return sendEvent([part], opts);
 }
 
 // 持续状态（基线快照）
-// ⚠️ targets 必须包含该部位【所有】需要持续的通道，漏写的会被清除
+// ⚠️ targets 必须包含每个部位【所有】需要持续的通道，漏写的会被清除（§5.2）
+//   多部位 / 多通道都放进同一个数组，一次发完
 function setBaseline(targets) {
   baselineSeq += 1;
   postCommand({
@@ -554,6 +573,20 @@ function setBaseline(targets) {
 
 // 清空基线
 function clearBaseline() { setBaseline([]); }
+
+// 用更高 sequence 替换同一事件（改强度 / 换旋转方向）
+function updateEvent(eventId, parts, opts) {
+  opts = opts || {};
+  eventSeq[eventId] = (eventSeq[eventId] || 0) + 1;
+  var targets = [];
+  for (var i = 0; i < parts.length; i++) {
+    targets.push(buildTarget(parts[i], opts));
+  }
+  postCommand({
+    protocolVersion: 1, command: 'update', source: SOURCE,
+    eventId: eventId, sequence: eventSeq[eventId], targets: targets
+  });
+}
 
 // 提前结束某个事件
 function stopEvent(eventId) {
@@ -568,13 +601,33 @@ function stopAll() {
 // ── 用法示例 ──
 // 拘束阶段：持续低强度底噪（两条通道都写，避免被当成"取消"）
 setBaseline([{ part: 'nipple', estimIntensity: 15, vibrateIntensity: 15, frequency: 30 }]);
+
 // 一次命中：叠加，到期自动回落到基线
 sendHit('nipple', { estim: 60, frequency: 40, durationMs: 900, rampUpMs: 120, rampDownMs: 180 });
+
+// 单部位多通道：E-Stim 强、振动弱（同一条 target 里合并，见 §3.2 规则二）
+sendHit('clitoris', { estim: 70, vibrate: 25, durationMs: 1200 });
+
+// ⭐ 全身 / 泛用事件：一次传多个部位 → 只发 1 次 POST（§4.6）
+//    不要写成 for 循环里调 sendHit —— 那会变成 4 次 POST，且可能被限流/造成卡顿
+sendEvent(['nipple', 'clitoris', 'vagina', 'anus'], { estim: 40, durationMs: 900 });
+
+// 同一事件改强度 / 换方向：用 update 带更高 sequence
+var eid = sendEvent(['nipple'], { estim: 50, durationMs: 5000 });
+updateEvent(eid, ['nipple'], {
+  estim: 30, durationMs: 5000,
+  rotateSpeed: 60, rotateDirection: 'counterclockwise'
+});
+
 // 高潮：数值更小但更重要
 sendHit('nipple', { estim: 15, durationMs: 3000, priority: 10 });
+
 // 战斗结束
 stopAll();
 ```
+
+> **一句话原则：`targets` 是数组，能合并就合并。** 一次命令里能放多个部位、每个部位
+> 又能放多条通道 —— 扇出、双击、多通道都应该是**一条命令**，不是多次 POST。
 
 ### 6.2 C#（BepInEx 插件）要点
 
@@ -666,7 +719,11 @@ stopAll();
 }
 ```
 
-格式正确时接收端返回 `{"ok":true,"code":"validated"}`，且**不会驱动任何设备**。
+`test` **不会驱动任何设备**。格式正确时接收端内部判定为 `validated`，格式有错则给出
+对应的错误码 —— **但两者都只写进 XToys 的 Script 日志，不会回传给你**（见 §1.1），
+你那边两种情况都是 HTTP 200。
+
+**所以 `test` 的用法是：发出去 → 去 XToys 日志里看结果**，不是看响应。
 
 ### 8.2 出问题时只能看 XToys 的 Script 日志
 

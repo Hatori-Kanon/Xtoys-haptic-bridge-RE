@@ -369,6 +369,33 @@ const testNoEvt = send({
 check("运行时确证：test 不带 eventId/sequence 被接受",
   testNoEvt.ok === true && testNoEvt.code === "validated", JSON.stringify(testNoEvt));
 
+/* J. 骨架 API 必须支持"一次多部位"，且文档不得出现自相矛盾的响应措辞 */
+console.log("\nJ. 骨架 API 与响应措辞");
+check("骨架提供多 target 的发送原语 sendEvent(parts, opts)",
+  guide.includes("function sendEvent(parts, opts)"));
+check("骨架的 target 构造独立成 buildTarget（可复用）",
+  guide.includes("function buildTarget(part, opts)"));
+check("单部位 sendHit 是 sendEvent 的薄包装（不是另一条路径）",
+  /function sendHit\(part, opts\)\s*\{\s*return sendEvent\(\[part\], opts\);/.test(guide));
+check("说明多部位应合并进一条命令，不要循环单部位版本",
+  guide.includes("不要写成 for 循环里调 sendHit") || guide.includes("不要循环调用单部位版本"));
+check("提供 updateEvent（用更高 sequence 替换同一事件）",
+  guide.includes("function updateEvent(eventId, parts, opts)"));
+check("用法示例含多部位扇出调用", guide.includes("sendEvent(['nipple', 'clitoris', 'vagina', 'anus']"));
+
+/* 响应措辞：不得再出现"接收端返回 …"这种会误导的断言式表述 */
+const RESPONSE_CONTRADICTIONS = [
+  [/格式正确时接收端返回/, "§8.1 仍写「接收端返回」(与 §1.1 矛盾)"],
+  [/^> 接收端对每条命令返回/m, "docs/02 仍以「接收端返回」开头陈述"],
+];
+for (const [re, label] of RESPONSE_CONTRADICTIONS) {
+  check(`未出现矛盾的响应措辞：${label}`, !re.test(guide) && !re.test(protocolDoc));
+}
+check("§8.1 明确 test 的结果只在 XToys 日志里看",
+  guide.includes("去 XToys 日志里看结果"));
+check("docs/02 §6 先讲「不会传给游戏侧」再讲内部返回值",
+  protocolDoc.indexOf("不会传给游戏侧") < protocolDoc.indexOf("接收端内部对每条命令产生"));
+
 /* ------------------------------------------------------------------ 汇总 */
 
 console.log(`\n${"-".repeat(64)}`);

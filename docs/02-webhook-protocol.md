@@ -243,14 +243,14 @@ Webhook POST 到 `https://webhook.xtoys.app/<Webhook ID>`，`Content-Type: appli
 
 ## 6. 错误与限制（建议保留的最小集）
 
-> 接收端对每条命令返回 `{ "ok": true|false, "code": "..." }`。
->
-> ⚠️ **这个返回值【不会传给游戏侧】。** XToys 的 trigger 执行 JS 时不回传结果
-> （`storeResult: false`），游戏侧只能拿到 HTTP 200。所以：
+> ⚠️ **先说最重要的一点：接收端的处理结果【不会传给游戏侧】。**
+> XToys 的 trigger 执行 JS 时不回传结果（`storeResult: false`），游戏侧只能拿到
+> HTTP 200。因此：
 > - 游戏侧**无法**从响应判断命令是否被接受，**不得**据此做重试或状态机决策；
-> - 该返回值只用于**写 XToys Script 日志**（也可配合 `xthb-last-error` 等诊断变量）。
+> - 真机已确认：**会被整体拒绝的载荷同样返回 HTTP 200**。
 >
-> 真机已确认：**会被整体拒绝的载荷同样返回 HTTP 200。**
+> 接收端内部对每条命令产生一个 `{ "ok": true|false, "code": "..." }`，
+> 它**只用于写 XToys Script 日志**（也可配合 `xthb-last-error` 等诊断变量）。
 
 建议保留的错误码：
 
