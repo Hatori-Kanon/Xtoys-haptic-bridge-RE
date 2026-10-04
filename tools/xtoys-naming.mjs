@@ -125,8 +125,29 @@ export function buildBlocks() {
 }
 
 /*
+ * 紧凑配置（进 customCode 代码文本里的那个）。
+ *
+ * 为什么要紧凑：真机上"把配置字符串经 variables 注入/变量读写传给 JS"这条路会打坏内容
+ * （2026-09-30 实测：494 字符 → 91 字符、所有值变成裸 undefined，是模板替换的特征）。
+ * 改成写进代码文本后，长度不再是硬约束，但越短越不容易再碰到任何长度或转义问题。
+ *
+ * 键名说明：运行时会大小写不敏感地取键，所以这里用短名。
+ *   v  = protocolVersion（版本，运行时用它做兼容判断的兜底）
+ *   p  = parts：部位 → 该部位启用的 metric 列表
+ *   s  = frequencySentinel
+ */
+export function buildCompactConfig() {
+  const p = {};
+  for (const part of Object.keys(PARTS)) {
+    p[part] = ALL_METRICS.filter((m) => PARTS[part][m]);
+  }
+  return { p, s: FREQUENCY_SENTINEL };
+}
+
+/*
  * 运行时配置（Initial Actions 写入 xthb-config-json）。
  * 形状必须与 src/xtoys-bridge.js 的 xthbParseConfig() 一致。
+ * 这是"备路"：主路是 code 内嵌字面量；备路供 tick 补读与诊断。
  */
 export function buildBridgeConfig() {
   const parts = {};
@@ -137,11 +158,6 @@ export function buildBridgeConfig() {
       parts[part][metric] = channelId(metric, part);
     }
   }
-  /*
-   * 只放运行时真正需要的字段。**不含 knownParts** —— 运行时不做部位白名单
-   * （docs/03 §6.1：部位名是否可用完全由这张表决定）。把一份用不到的清单
-   * 塞进配置里，只会让"到底谁在限制部位名"变得含糊。
-   */
   return {
     protocolVersion: 1,
     parts,

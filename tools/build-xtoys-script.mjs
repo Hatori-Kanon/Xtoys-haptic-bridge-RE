@@ -25,7 +25,7 @@ import { fileURLToPath } from "node:url";
 import {
   ALL_METRICS, FREQUENCY_SENTINEL, KNOWN_PART_NAMES, METRIC_TYPE,
   SCHEDULER_INTERVAL_SECONDS, SCHEDULER_JOB,
-  buildBlocks, buildBridgeConfig,
+  buildBlocks, buildBridgeConfig, buildCompactConfig,
 } from "./xtoys-naming.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -182,17 +182,21 @@ function buildScript(runtimeSource) {
    *       payload 用的是同一机制，那个机制已被真机证明可用）。
    * 备路：仍然 updateVariable 写一份到 Script 变量，供 tick 补读与诊断。
    */
-  initialActions.push(updateVariable("xthb-config-json", JSON.stringify(BRIDGE_CONFIG)));
   /*
-   * ⚠️ variables[].value 必须是【字符串】。
-   * 真机实测（2026-09-30）：把配置对象直接放进 value 会让 XToys 处理 Action 时
-   * 抛 `TypeError: ....startsWith is not a function`（堆栈在 M.processActions），
-   * 因为它在内部按字符串判断这个值。触发器传 payload 用的是字符串魔法值，所以可用。
-   * 这里统一传 JSON 文本；运行时同时接受字符串与对象，不依赖某一种。
+   * 配置写进【代码文本】（主路）。
+   *
+   * 真机实测教训（2026-09-30）：把配置字符串经 `variables` 注入、或经
+   * updateVariable 写变量再读回来，内容都会被 XToys 打坏 ——
+   * 494 字符的合法 JSON 变成 91 字符，键和标点完好、所有值变成裸 undefined，
+   * 这是"模板替换失败"的特征。两条路都试过，都会坏。
+   *
+   * 所以把配置直接内联成 code 里的字面量：代码文本是唯一被证明能可靠承载
+   * 任意字符串的地方（Webhook 的 payload 就是从这条路进来的）。
+   * 紧凑配置只有几十字符，进一步降低任何长度 / 转义风险。
    */
-  initialActions.push(customCode("xtoysBridgeInit(cfgJson);", [
-    { name: "cfgJson", value: JSON.stringify(BRIDGE_CONFIG), expression: null },
-  ]));
+  const inlineCfg = JSON.stringify(buildCompactConfig());
+  initialActions.push(updateVariable("xthb-config-json", JSON.stringify(BRIDGE_CONFIG)));
+  initialActions.push(customCode(`xtoysBridgeInit(${inlineCfg});`));
   initialActions.push(startJob(SCHEDULER_JOB));
 
   /*

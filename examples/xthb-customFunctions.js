@@ -383,7 +383,14 @@ function xthbParseConfig(injected) {
   return xthbValidateConfig(parsed);
 }
 
-/* 校验已经解析成对象的配置，并派生出 Block 列表。 */
+/*
+ * 校验已经解析成对象的配置，并派生出 Block 列表。
+ *
+ * 支持两种形状（键名大小写与长短都不敏感，避免为了省几个字符而把解析写脆）：
+ *   完整版：{ protocolVersion, parts: { part: { metric: channelId } }, frequencySentinel }
+ *   紧凑版：{ v, p: { part: [metric, ...] }, s }
+ * 紧凑版是生成器内联进 code 的那个；完整版是备路变量里的那个。
+ */
 function xthbValidateConfig(parsed) {
   var blocks = [];
   var seen = {};
@@ -391,32 +398,38 @@ function xthbValidateConfig(parsed) {
   var metric;
   var partSpec;
   var id;
+  var partsSpec = xthbPickKey(parsed, ["parts", "p"]);
+  var sentinel = xthbPickKey(parsed, ["frequencySentinel", "s"]);
+  var version = xthbPickKey(parsed, ["protocolVersion", "v"]);
+  var metricList;
+  var metricIndex;
 
-  if (typeof parsed !== "object" || parsed === null) {
-    return { error: "配置不是对象" };
+  if (version === undefined) {
+    /* 没写版本就按当前版本处理：紧凑配置刻意省掉它。 */
+    version = XTHB_PROTOCOL_VERSION;
   }
-  if (parsed.protocolVersion !== XTHB_PROTOCOL_VERSION) {
-    return { error: "配置 protocolVersion 不受支持" };
+  if (version !== XTHB_PROTOCOL_VERSION) {
+    return { error: "配置 protocolVersion 不受支持（读到 " + xthbPreview(String(version)) + "）" };
   }
-  if (typeof parsed.parts !== "object" || parsed.parts === null) {
-    return { error: "配置缺少 parts" };
+  if (typeof partsSpec !== "object" || partsSpec === null) {
+    return { error: "配置缺少 parts（读到 " + xthbPreview(xthbPreview2(parsed)) + "）" };
   }
-  if (xthbCountOwn(parsed.parts) === 0) {
+  if (xthbCountOwn(partsSpec) === 0) {
     return { error: "配置 parts 为空" };
   }
-  if (!xthbIsFiniteNumber(parsed.frequencySentinel)) {
+  if (!xthbIsFiniteNumber(sentinel)) {
     return { error: "配置缺少 frequencySentinel" };
   }
   /*
    * 哨兵值必须在真实频率范围（0–100）之外，否则"没有频率意图"与"真实频率值"
    * 无法区分，estim Job 会在每次推送时都去写频率（docs/03 §4.5）。
    */
-  if (parsed.frequencySentinel >= 0 && parsed.frequencySentinel <= 100) {
+  if (sentinel >= 0 && sentinel <= 100) {
     return { error: "配置 frequencySentinel 必须落在 0–100 之外" };
   }
 
-  for (part in parsed.parts) {
-    if (!xthbHasOwn(parsed.parts, part)) {
+  for (part in partsSpec) {
+    if (!xthbHasOwn(partsSpec, part)) {
       continue;
     }
     if (!xthbIsNonEmptyString(part)) {
@@ -425,27 +438,35 @@ function xthbValidateConfig(parsed) {
     /*
      * 不校验"部位名是否在合法清单里"。docs/03 §6.1 定的是：
      * 部位名是否可用，完全由这张映射表决定 —— 表里有就是合法的，没有白名单。
-     * 表里写错名字的后果只是那个名字不生效（游戏侧发它会被忽略并留痕），
-     * 而不是让整个运行时停摆。
      */
     if (!xthbIsSafeId(part, XTHB_MAX_ID_CHARS)) {
       return { error: "parts 含控制字符或过长的部位名" };
     }
-    partSpec = parsed.parts[part];
-    if (typeof partSpec !== "object" || partSpec === null) {
-      return { error: "parts." + part + " 不是对象" };
+    partSpec = partsSpec[part];
+
+    if (xthbIsArray(partSpec)) {
+      /* 紧凑版：该部位启用的 metric 列表。 */
+      metricList = partSpec;
+    } else if (typeof partSpec === "object" && partSpec !== null) {
+      /* 完整版：metric → channelId。 */
+      metricList = xthbOwnKeys(partSpec);
+    } else {
+      return { error: "parts." + part + " 既不是 metric 列表也不是对象" };
     }
-    for (metric in partSpec) {
-      if (!xthbHasOwn(partSpec, metric)) {
-        continue;
-      }
+
+    for (metricIndex = 0; metricIndex < metricList.length; metricIndex = metricIndex + 1) {
+      metric = metricList[metricIndex];
       if (metric !== XTHB_METRIC_ESTIM && metric !== XTHB_METRIC_VIBRATE &&
         metric !== XTHB_METRIC_ROTATE) {
         return { error: "parts." + part + " 含未知 metric " + metric };
       }
-      id = partSpec[metric];
+      /*
+       * 完整版配置显式给出 Channel ID；紧凑版没有，就按命名规范推导。
+       * 显式给了就必须用它 —— 这样"Block 专属一个 part"的校验对两种形状都有效。
+       */
+      id = xthbConfigChannelValue(partSpec, metric);
       if (!xthbIsNonEmptyString(id)) {
-        return { error: "parts." + part + "." + metric + " 的 Channel ID 非法" };
+        id = channelIdFor(metric, part);
       }
       /* 规则 1：Block 专属一个 part。 */
       if (xthbHasOwn(seen, id)) {
@@ -466,7 +487,40 @@ function xthbValidateConfig(parsed) {
   if (blocks.length === 0) {
     return { error: "配置没有派生任何 Block" };
   }
-  return { config: parsed, blocks: blocks };
+  return { config: { frequencySentinel: sentinel }, blocks: blocks };
+}
+
+/* 完整版配置里 metric → Channel ID 的值；紧凑版（数组）没有，返回 undefined。 */
+function xthbConfigChannelValue(partSpec, metric) {
+  if (xthbIsArray(partSpec)) {
+    return undefined;
+  }
+  return xthbPickKey(partSpec, [metric]);
+}
+
+/* 大小写不敏感地取第一个存在的键。 */
+function xthbPickKey(obj, names) {
+  var index;
+  var key;
+  var lowered;
+  for (index = 0; index < names.length; index = index + 1) {
+    if (xthbHasOwn(obj, names[index])) {
+      return obj[names[index]];
+    }
+    lowered = names[index].toLowerCase();
+    for (key in obj) {
+      if (xthbHasOwn(obj, key) && key.toLowerCase() === lowered) {
+        return obj[key];
+      }
+    }
+  }
+  return undefined;
+}
+
+/* 把一个对象做成简短可读的预览，用于诊断。 */
+function xthbPreview2(obj) {
+  var keys = xthbOwnKeys(obj);
+  return "{" + keys.join(",") + "}";
 }
 
 /* 该 metric 在这个部位上有没有 Block。没有 → 忽略该指标（docs/03 §6.2）。 */
@@ -525,6 +579,20 @@ function xthbFrequencyVar(channelId) {
 
 function xthbDirectionVar(channelId) {
   return "xthb-" + xthbChannelSlug(channelId) + "-direction-code";
+}
+
+/* metric + part → Channel ID。规则见 docs/03 §2.1（通道类型词用 vibrator / rotator）。 */
+var XTHB_METRIC_CHANNEL_WORD = {
+  estim: "estim",
+  vibrate: "vibrator",
+  rotate: "rotator"
+};
+
+function channelIdFor(metric, part) {
+  var word = xthbHasOwn(XTHB_METRIC_CHANNEL_WORD, metric)
+    ? XTHB_METRIC_CHANNEL_WORD[metric]
+    : metric;
+  return "part-" + word + "-" + part;
 }
 
 /* 输出 Job 名由 metric + part 派生（与生成器一致）。 */
@@ -1439,6 +1507,12 @@ function xtoysBridgeHandle(payload) {
   if (payload.length > XTHB_MAX_PAYLOAD_CHARS) {
     return xthbFail("invalid_payload", "载荷超过 " + XTHB_MAX_PAYLOAD_CHARS + " 字符");
   }
+  /*
+   * 载荷长度进入日志：真机上"传给 JS 的字符串被打坏"是实际发生过的问题
+   * （配置经 variables 注入时 494 → 91 字符）。如果 webhook 载荷也遇到同类
+   * 截断，这条日志能立刻看出来。
+   */
+  xthbLog("收到载荷 " + payload.length + " 字符：" + xthbPreview(payload));
   try {
     outer = JSON.parse(payload);
   } catch (outerErr) {

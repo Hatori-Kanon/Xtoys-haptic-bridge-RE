@@ -1302,6 +1302,53 @@ test("初始化日志会写明配置来源与长度（便于真机核对传值�
   assert(/object\/\d+字符/.test(joined), `日志应包含类型与长度，实际：${joined}`);
 });
 
+section("14. 真机实测回归：配置内联进代码文本（主路）");
+
+test("紧凑配置（内联在 code 里）能完成初始化", () => {
+  /*
+   * 真机实测：配置字符串无论经 variables 注入、还是经变量读写，都会被 XToys 打坏
+   * （494 字符 → 91 字符、值全变裸 undefined，模板替换的特征）。
+   * 所以主路改成直接内联进 code 文本。这里锁住紧凑形状可用。
+   */
+  const host = createMockHost();
+  const result = host.call.raw('xtoysBridgeInit({"p":{"nipple":["estim","vibrate","rotate"],"vagina":["estim","vibrate"]},"s":-1});');
+  assertEqual(result, "initialized", "紧凑配置应能完成初始化");
+  assertEqual(host.V("xthb-status"), "running", "状态应为 running");
+  assert(host.call.raw("xthbInjectedInfo").includes("object"), "内联字面量是对象，应记录 object");
+});
+
+test("紧凑配置能真正派生出正确数量的 Block 并驱动输出", () => {
+  const host = createMockHost();
+  host.call.raw('xtoysBridgeInit({"p":{"nipple":["estim","vibrate","rotate"]},"s":-1});');
+  assertEqual(host.call.raw("xthbBlocks.length"), 3, "nipple 应派生 3 个 Block");
+  const accepted = host.call.handle(envelope({
+    protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
+    targets: [{ part: "nipple", intensity: 45 }],
+  }));
+  assertEqual(accepted.ok, true, "应接受载荷");
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 45, "estim 应输出");
+  assertEqual(host.V(VOL.vibrateNipple), 45, "vibrate 应输出");
+});
+
+test("生成的 JSON 里初始化 customCode 内联了紧凑配置（不再依赖注入/变量）", () => {
+  const script = JSON.parse(readFileSync(join(ROOT, "examples", "xtoys-minimal-3path.json"), "utf8"));
+  const init = script.initialActions.find((a) => a.type === "customCode");
+  assert(/^xtoysBridgeInit\(\{.*"p":\{/.test(init.code),
+    `初始化代码应内联紧凑配置，实际：${init.code}`);
+  assert(!init.variables || init.variables.length === 0,
+    "不应再依赖 variables 注入（那条路在真机上会打坏内容）");
+});
+
+test("紧凑配置解析出的 Channel ID 与命名规范一致", () => {
+  const host = createMockHost();
+  host.call.raw('xtoysBridgeInit({"p":{"nipple":["estim","vibrate","rotate"]},"s":-1});');
+  const ids = host.call.raw("xthbBlocks.map(function(b){return b.channel;}).join(',')");
+  assert(ids.includes("part-estim-nipple"), `应有 part-estim-nipple，实际 ${ids}`);
+  assert(ids.includes("part-vibrator-nipple"), `通道类型词应为 vibrator，实际 ${ids}`);
+  assert(ids.includes("part-rotator-nipple"), `通道类型词应为 rotator，实际 ${ids}`);
+});
+
 /* ============================================================== 汇总 */
 
 console.log(`\n${"-".repeat(64)}`);
