@@ -1506,47 +1506,57 @@ function xthbCountLiveEvents(nowMs) {
   return total;
 }
 
-/* 全局 Trigger 入口。payload 是 Webhook body（字符串）。 */
+/*
+ * 全局 Trigger 入口。
+ * 参数是 Trigger 注入的载荷，真机上可能是【外层封装】也可能已经是【内层载荷】；
+ * 两种形状都必须能处理（docs/02 §1 的封装仍要支持，因为手工 curl 测试就是那个形状）。
+ */
 function xtoysBridgeHandle(payload) {
   var outer;
   var inner;
   var parsed;
   var result;
+  var rawLen;
 
   if (xthbConfig === null) {
     return xthbFail("invalid_config", "运行时未初始化");
   }
-  if (typeof payload !== "string" || payload.length === 0) {
-    return xthbFail("invalid_payload", "载荷为空或非字符串");
+  if (typeof payload !== "string" && typeof payload !== "object") {
+    return xthbFail("invalid_payload", "载荷既不是字符串也不是对象");
   }
-  if (payload.length > XTHB_MAX_PAYLOAD_CHARS) {
-    return xthbFail("invalid_payload", "载荷超过 " + XTHB_MAX_PAYLOAD_CHARS + " 字符");
+  /* 对象是宿主直接给的情况：无需解析，直接当内层用。 */
+  if (typeof payload === "object" && payload !== null) {
+    inner = payload;
+    xthbLog("收到对象型载荷：" + xthbPreview(xthbSafeStringify(payload)));
+  } else {
+    rawLen = payload.length;
+    if (rawLen === 0) {
+      return xthbFail("invalid_payload", "载荷为空");
+    }
+    if (rawLen > XTHB_MAX_PAYLOAD_CHARS) {
+      return xthbFail("invalid_payload", "载荷超过 " + XTHB_MAX_PAYLOAD_CHARS + " 字符");
+    }
+    /*
+     * 载荷长度进入日志：真机上"传给 JS 的字符串被打坏"是实际发生过的问题
+     * （配置经 variables 注入时 494 → 91 字符）。如果 webhook 载荷也遇到同类
+     * 截断，这条日志能立刻看出来。
+     */
+    xthbLog("收到载荷 " + rawLen + " 字符：" + xthbPreview(payload));
+    try {
+      outer = JSON.parse(payload);
+    } catch (outerErr) {
+      return xthbFail("invalid_json", "载荷不是合法 JSON");
+    }
+    if (typeof outer !== "object" || outer === null) {
+      return xthbFail("invalid_payload", "载荷不是对象");
+    }
+    inner = xthbNormalizeEnvelope(outer);
+    if (inner.error) {
+      return xthbFail(inner.error);
+    }
+    inner = inner.inner;
   }
-  /*
-   * 载荷长度进入日志：真机上"传给 JS 的字符串被打坏"是实际发生过的问题
-   * （配置经 variables 注入时 494 → 91 字符）。如果 webhook 载荷也遇到同类
-   * 截断，这条日志能立刻看出来。
-   */
-  xthbLog("收到载荷 " + payload.length + " 字符：" + xthbPreview(payload));
-  try {
-    outer = JSON.parse(payload);
-  } catch (outerErr) {
-    return xthbFail("invalid_json", "外层不是合法 JSON");
-  }
-  if (typeof outer !== "object" || outer === null) {
-    return xthbFail("invalid_payload", "外层不是对象");
-  }
-  if (outer.action !== "xtoys_game_bridge") {
-    return xthbFail("invalid_payload", "外层 action 不是 xtoys_game_bridge");
-  }
-  if (typeof outer.payload !== "string") {
-    return xthbFail("invalid_payload", "外层 payload 不是字符串");
-  }
-  try {
-    inner = JSON.parse(outer.payload);
-  } catch (innerErr) {
-    return xthbFail("invalid_json", "内层 payload 不是合法 JSON");
-  }
+
   if (typeof inner !== "object" || inner === null) {
     return xthbFail("invalid_payload", "内层不是对象");
   }
@@ -1565,6 +1575,65 @@ function xtoysBridgeHandle(payload) {
     xthbLog("rejected " + result.code);
   }
   return result;
+}
+
+/*
+ * 把解析出来的外层对象归一化成协议对象（内层）。
+ *
+ * 支持这些形状（真机与手工 curl 测试会分别命中不同的那种）：
+ *   1. {"action":"xtoys_game_bridge","payload":"<内层JSON文本>"}   协议 §1 的封装
+ *   2. {"action":"xtoys_game_bridge","payload":{...}}              payload 已被求值成对象
+ *   3. {"command":"...","source":"..."}                            已是内层协议对象
+ *   4. "<内层JSON文本>"                                             双重编码的字符串
+ * 返回 null 表示无法识别。
+ */
+function xthbNormalizeEnvelope(outer) {
+  var action = xthbPickKey(outer, ["action"]);
+  var innerRaw;
+  var depth = 0;
+  var current = outer;
+
+  if (xthbIsNonEmptyString(action) && action !== "xtoys_game_bridge") {
+    xthbLog("载荷 action 不是 xtoys_game_bridge（读到 " + xthbPreview(String(action)) + "）");
+    return { error: "invalid_payload" };
+  }
+  if (xthbHasOwn(outer, "payload") || xthbHasOwn(outer, "Payload")) {
+    innerRaw = xthbPickKey(outer, ["payload"]);
+    if (typeof innerRaw === "string") {
+      try {
+        current = JSON.parse(innerRaw);
+      } catch (innerErr) {
+        xthbLog("外层 payload 不是合法 JSON（读到 " + xthbPreview(innerRaw) + "）");
+        /* payload 字段本身不是合法 JSON → 这是 JSON 解析失败，不是结构不认识。 */
+        return { error: "invalid_json" };
+      }
+    } else if (typeof innerRaw === "object" && innerRaw !== null) {
+      current = innerRaw;
+    } else {
+      return { error: "invalid_payload" };
+    }
+  }
+  /*
+   * 兜底：还有可能是"字符串里再套一层字符串"（双重编码）。最多解 4 层，
+   * 既处理真实情况又不会死循环。
+   */
+  while (typeof current === "string" && depth < 4) {
+    try {
+      current = JSON.parse(current);
+    } catch (againErr) {
+      return { error: "invalid_json" };
+    }
+    depth = depth + 1;
+  }
+  if (typeof current !== "object" || current === null) {
+    return { error: "invalid_payload" };
+  }
+  /* 认一下是不是协议对象：至少要有个 command 或 targets。 */
+  if (!xthbHasOwn(current, "command") && !xthbHasOwn(current, "targets") &&
+    !xthbHasOwn(current, "Command")) {
+    return { error: "invalid_payload" };
+  }
+  return { inner: current };
 }
 
 function xthbParseCommand(inner) {

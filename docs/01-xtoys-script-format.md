@@ -181,7 +181,7 @@ Webhook 通道实测形状：
 ```
 
 - `variables`：把外部值映射成 JS 里可见的变量名。
-- `value: "trigger-payload"` 是**魔法值**：注入触发器的原始载荷（Webhook body）。
+- `value: "trigger-payload"` 是**魔法值**。
 - `resultVar` + `storeResult`：是否把返回值写回变量。
 - ⚠️ **`variables[].value` 必须是字符串**（或魔法值）。真机实测（2026-09-30）：
   放一个**对象**进去，XToys 处理 Action 时直接抛
@@ -189,6 +189,14 @@ Webhook 通道实测形状：
   整个 Script 启动失败。XToys 内部按字符串处理这个字段。
   需要传结构化数据时**先 `JSON.stringify`**，在 JS 侧再 `JSON.parse`。
   生成器 `tools/build-xtoys-script.mjs` 有对应自检，会在构建期挡住这种写法。
+- ⚠️ **`trigger-payload` 给的不是原始 webhook body，而是已剥掉外层封装的内容。**
+  真机实测（2026-09-30）：Webhook body 是
+  `{"action":"xtoys_game_bridge","payload":"{\"command\":\"set_baseline\",...}"}`
+  （网络面板可见），但 JS 侧收到的 `payload` 变量值已经是
+  `{"targets":[...],"source":"...","protocolVersion":1,"command":"set_baseline"}`
+  —— 即 **trigger 的 `action` 是路由键（会被剥掉），`payload` 字段也被解了一层**。
+  因此接收端**必须同时接受两种形状**：外层封装（手工 curl 测试是这个形状）
+  与内层协议对象。`xtoysBridgeHandle` 现在两种都认（见 `xthbNormalizeEnvelope`）。
 
 ---
 

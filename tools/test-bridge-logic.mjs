@@ -1369,6 +1369,78 @@ test("String(普通对象) 在本宿主里确实会得出 15 字符（说明为�
   assertEqual(viaString, 15, "String({a:1}) 应为 '[object Object]' 的 15 字符");
 });
 
+section("15. 真机实测回归：载荷形状（XToys 已剥掉外层封装）");
+
+test("直接给【内层协议对象】也能处理（真机上注入的就是这个形状）", () => {
+  /*
+   * 真机实测（2026-09-30）：触发器注入进来的 payload 不是原始 webhook body，
+   * 而是已剥掉 {"action","payload"} 封装后的内容：
+   *   {"targets":[...],"source":"acceptance","sequence":1,"protocolVersion":1,"command":"set_baseline"}
+   * 早期实现只认外层封装，于是报 "外层 action 不是 xtoys_game_bridge"，设备无反应。
+   */
+  const host = bootHost();
+  const result = host.call.handle(envelope({
+    protocolVersion: 1, command: "set_baseline", source: "acceptance", sequence: 1,
+    targets: [{ part: "nipple", intensity: 15, frequency: 30, rampUpMs: 800 }],
+  }));
+  assertEqual(result.ok, true, "内层对象应被接受");
+});
+
+test("把【内层对象本身】当字符串传入也能处理（真机日志的确切形状）", () => {
+  const host = bootHost();
+  /* 真机日志里 payload 变量的值就是这段文本（不含外层封装）。 */
+  const innerText = JSON.stringify({
+    targets: [{ part: "nipple", intensity: 15, frequency: 30, rampUpMs: 800 }],
+    source: "acceptance", sequence: 1, protocolVersion: 1, command: "set_baseline",
+  });
+  const result = host.call.handle(innerText);
+  assertEqual(result.ok, true, "内层 JSON 文本应被接受");
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 15, "应真正驱动输出");
+  assertEqual(host.V(FREQ_NIPPLE), 30, "频率应生效");
+});
+
+test("对象型载荷（宿主直接给对象）也能处理", () => {
+  const host = bootHost();
+  const result = host.call.handle({
+    protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
+    targets: [{ part: "nipple", intensity: 42, durationMs: 60000 }],
+  });
+  assertEqual(result.ok, true, "对象型载荷应被接受");
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 42, "应驱动输出");
+});
+
+test("协议 §1 的外层封装仍然照常支持（手工 curl 测试用）", () => {
+  const host = bootHost();
+  const result = host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
+    targets: [{ part: "nipple", intensity: 33, durationMs: 60000 }],
+  }));
+  assertEqual(result.ok, true, "外层封装必须继续可用");
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 33, "应驱动输出");
+});
+
+test("payload 已被求值成对象的外层封装也能处理", () => {
+  const host = bootHost();
+  const payload = JSON.stringify({
+    action: "xtoys_game_bridge",
+    payload: { protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
+      targets: [{ part: "nipple", intensity: 27, durationMs: 60000 }] },
+  });
+  assertEqual(host.call.handle(payload).ok, true, "payload 为对象时也应接受");
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 27, "应驱动输出");
+});
+
+test("无法识别的载荷仍然如实拒绝（不静默成功）", () => {
+  const host = bootHost();
+  assertEqual(host.call.handle('{"foo":"bar"}').ok, false, "既无 action 也无 command 应被拒");
+  assertEqual(host.call.handle('{"action":"other","payload":"{}"}').ok, false,
+    "action 不匹配应被拒");
+});
+
 /* ============================================================== 汇总 */
 
 console.log(`\n${"-".repeat(64)}`);

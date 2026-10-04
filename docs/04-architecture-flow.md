@@ -103,12 +103,12 @@ sequenceDiagram
 | --- | --- | --- | --- |
 | A1 | Webhook POST 落到 XToys 的 `webhook` 通道 | `channels["webhook-a"]` | 语法 §2 |
 | A2 | `globalTriggers` 用外层 `action == xtoys_game_bridge` 匹配 | `globalTriggers[0]` | 语法 §5 |
-| A3 | 把 Webhook body 作为**字符串**交给 JS：`variables[].value = "trigger-payload"`（魔法值） | `customCode.xtoysBridgeHandle(payload)` | 语法 §4.4 |
-| A4 | 解析**外层**对象，取 `payload` 字段（一个 JSON 字符串） | `xtoysBridgeHandle` | 协议 §1 |
-| A5 | 解析**内层**协议对象 | `xthbParseCommand` | 协议 §2 |
-| A6 | 校验：`protocolVersion` / `command` / `source` / `sequence` / `targets`<br/>含 §6.2 指标规则、§6.5 同部位重复拒绝 | `xthbParseCommand` / `xthbParseTargets` | 映射 §6.2 / §6.5 |
-| A7 | 落状态：`play`/`update` 写事件、`set_baseline` 换快照、`stop` 选择器移除、`stop_all` 清空 | `xthbApplyPlay` / `ApplyBaseline` / `ApplyStop` | 协议 §5 |
-| A8 | 返回 `{ok:true}` 或 `{ok:false, code}` | **缺陷 1 要修**：执行阶段错误也要归一化成 `{ok:false}` | 状态文档 §2 |
+| A3 | 把载荷交给 JS：`variables[].value = "trigger-payload"`（魔法值） | `customCode.xtoysBridgeHandle(payload)` | 语法 §4.4 |
+| A3.5 | ⚠️ **真机实测：注入的载荷已剥掉外层封装**，直接就是内层协议对象 | `xthbNormalizeEnvelope` 两种形状都认 | 语法 §4.4 |
+| A4 | 认出协议对象（外层封装 / 内层对象 / 双重编码字符串 / 直接对象） | `xthbNormalizeEnvelope` | 协议 §1 |
+| A5 | 解析并校验：`protocolVersion` / `command` / `source` / `sequence` / `targets`<br/>含 §6.2 指标规则、§6.5 同部位重复拒绝 | `xthbParseCommand` / `xthbParseTargets` | 映射 §6.2 / §6.5 |
+| A6 | 落状态：`play`/`update` 写事件、`set_baseline` 换快照、`stop` 选择器移除、`stop_all` 清空 | `xthbApplyPlay` / `ApplyBaseline` / `ApplyStop` | 协议 §5 |
+| A7 | 返回 `{ok:true}` 或 `{ok:false, code}` | 执行阶段错误也必须归一化成 `{ok:false}` | 状态文档 §2 |
 
 **这一阶段结束时没有任何输出被改变。** 事件只是被记进内存状态。
 这个"事件与输出解耦"是整个设计的核心：事件可以在任意时刻到达、任意密，
