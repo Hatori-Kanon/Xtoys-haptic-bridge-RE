@@ -94,6 +94,8 @@ var XTHB_MAX_DURATION_MS = 600000;
 var XTHB_MAX_EVENTS = 64;
 /* 事件整体到期后，还保留多久作为序号栅栏（防重复投递变成重复刺激）。 */
 var XTHB_EXPIRED_EVENT_KEEP_MS = 600000;
+/* 启动没读到配置时，tick 里最多补读多少次（约 3 秒）。 */
+var XTHB_MAX_INIT_RETRIES = 30;
 
 /* metric 取值（docs/03 §2.2）。 */
 var XTHB_METRIC_ESTIM = "estim";
@@ -130,6 +132,8 @@ var xthbLastError = "";
 var xthbLastIgnored = "";
 /* 已留痕过的 (部位, 指标) 组合，避免同一个问题被反复计数。 */
 var xthbAuditSeen = {};
+/* tick 里"补读配置"的尝试次数（见 xtoysBridgeTick 的自愈分支）。 */
+var xthbTickCountForInit = 0;
 
 /* =====================================================================
  * 3. 基础工具（全部 ES5）
@@ -217,6 +221,47 @@ function xthbIsArray(value) {
     typeof value.length === "number" && typeof value.push === "function";
 }
 
+/* 去掉 BOM 与首尾空白。XToys 写变量时可能带上它们，会让 JSON.parse 直接失败。 */
+function xthbTrimRaw(text) {
+  var start = 0;
+  var end = text.length;
+  var code;
+  while (start < end) {
+    code = text.charCodeAt(start);
+    if (code === 0xFEFF || code === 32 || code === 9 || code === 10 || code === 13) {
+      start = start + 1;
+    } else {
+      break;
+    }
+  }
+  while (end > start) {
+    code = text.charCodeAt(end - 1);
+    if (code === 32 || code === 9 || code === 10 || code === 13) {
+      end = end - 1;
+    } else {
+      break;
+    }
+  }
+  return text.substring(start, end);
+}
+
+/* 把实际读到的文本做成一行可读的预览，用于诊断"配置不是合法 JSON"。 */
+function xthbPreview(text) {
+  var visible = text.length > 160 ? text.substring(0, 160) + "…(截断)" : text;
+  var out = "";
+  var index;
+  var code;
+  for (index = 0; index < visible.length; index = index + 1) {
+    code = visible.charCodeAt(index);
+    if (code < 32) {
+      out = out + "\\u" + ("000" + code.toString(16)).slice(-4);
+    } else {
+      out = out + visible.charAt(index);
+    }
+  }
+  return "\"" + out + "\"";
+}
+
 function xthbHasOwn(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj, key);
 }
@@ -291,9 +336,44 @@ function xthbNoteIgnored(detail) {
  *   2. part 名必须是非空字符串（没有白名单；表里有的就是合法的）。
  *   3. metric 必须是 estim / vibrate / rotate。
  */
-function xthbParseConfig() {
-  var raw = XTHB_getVariable(XTHB_VAR_CONFIG);
+/*
+ * 解析配置。
+ *
+ * rawOverride 用于"启动时变量还没就绪"的补救：如果 Initial Actions 里
+ * updateVariable 与 customCode 的先后顺序在 XToys 实际执行时不能保证，
+ * init 就读不到配置；此时留到 tick 里用 getVariable 再读一次（见 xtoysBridgeTick）。
+ */
+function xthbParseConfig(rawOverride) {
+  var raw = xthbIsNonEmptyString(rawOverride) ? rawOverride : XTHB_getVariable(XTHB_VAR_CONFIG);
   var parsed;
+
+  if (!xthbIsNonEmptyString(raw)) {
+    /*
+     * 变量不是字符串。真机上 updateVariable 有可能把值当对象/数字存，
+     * 那样它已经是一个可用对象，不必再 JSON.parse。这不是我们生成的形状，
+     * 但没必要为此让整个运行时停摆。
+     */
+    if (typeof raw === "object" && raw !== null && !xthbIsArray(raw)) {
+      return xthbValidateConfig(raw);
+    }
+    return { error: "配置变量 " + XTHB_VAR_CONFIG + " 未设置或类型不支持（读到 " + xthbPreview(String(raw)) + "）" };
+  }
+  /* 去掉 BOM 与首尾空白 —— 它们会让 JSON.parse 直接失败。 */
+  raw = xthbTrimRaw(raw);
+  try {
+    parsed = JSON.parse(raw);
+  } catch (parseErr) {
+    /*
+     * 把实际读到的内容打出来（截断 + 转义）。没有这一步，"配置不是合法 JSON"
+     * 只能靠猜：到底是空值、被截断、还是被 XToys 改写过。
+     */
+    return { error: "配置不是合法 JSON（读到 " + raw.length + " 字符：" + xthbPreview(raw) + "）" };
+  }
+  return xthbValidateConfig(parsed);
+}
+
+/* 校验已经解析成对象的配置，并派生出 Block 列表。 */
+function xthbValidateConfig(parsed) {
   var blocks = [];
   var seen = {};
   var part;
@@ -301,14 +381,6 @@ function xthbParseConfig() {
   var partSpec;
   var id;
 
-  if (!xthbIsNonEmptyString(raw)) {
-    return { error: "配置变量 " + XTHB_VAR_CONFIG + " 未设置或不是字符串" };
-  }
-  try {
-    parsed = JSON.parse(raw);
-  } catch (parseErr) {
-    return { error: "配置不是合法 JSON" };
-  }
   if (typeof parsed !== "object" || parsed === null) {
     return { error: "配置不是对象" };
   }
@@ -331,7 +403,6 @@ function xthbParseConfig() {
   if (parsed.frequencySentinel >= 0 && parsed.frequencySentinel <= 100) {
     return { error: "配置 frequencySentinel 必须落在 0–100 之外" };
   }
-  knownParts = xthbIsArray(parsed.knownParts) ? parsed.knownParts : [];
 
   for (part in parsed.parts) {
     if (!xthbHasOwn(parsed.parts, part)) {
@@ -1232,8 +1303,28 @@ function xtoysBridgeTick() {
   var nowMs;
   var key;
 
+  /*
+   * 自愈：如果启动时没读到配置（Initial Actions 里 updateVariable 与 customCode
+   * 的实际执行顺序若不能保证，就会发生），不要就此永久静默 —— 定期重新尝试读一次
+   * 配置变量，读到了就自动完成初始化。
+   *
+   * 真机实测（2026-09-30）遇到的正是这种情况：启动时报"配置不是合法 JSON"，
+   * 之后所有 webhook 都因为"运行时未初始化"而无反应。让 tick 自愈可以修掉它，
+   * 而且不管根因是顺序问题还是变量写入延迟都成立。
+   *
+   * 30 次（约 3 秒）还没读到就放弃重试，避免每 100ms 刷日志；但**不停止** tick，
+   * 这样真机日志里能明确看到"配置始终没就绪"，而不是一片沉默。
+   */
   if (xthbConfig === null) {
-    return "not_initialized";
+    if (xthbTickCountForInit < XTHB_MAX_INIT_RETRIES) {
+      xthbTickCountForInit = xthbTickCountForInit + 1;
+      if (xtoysBridgeInit() !== "initialized") {
+        return "not_initialized";
+      }
+      xthbLog("配置在 tick 里补读成功（第 " + xthbTickCountForInit + " 次尝试）");
+    } else {
+      return "not_initialized";
+    }
   }
   nowMs = xthbNowMs();
   xthbTicks = xthbTicks + 1;

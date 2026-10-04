@@ -1190,6 +1190,63 @@ test("更大的 sequence 仍可替换已过期的事件", () => {
   assertEqual(host.V(VOL.estimNipple), 60, "新事件应生效");
 });
 
+section("12. 真机实测回归：启动时读不到配置");
+
+test("启动时配置不可读，后续 tick 自动补读并恢复（真机踩到的故障）", () => {
+  /*
+   * 真机实测（2026-09-30）：Initial Actions 里 updateVariable 与 customCode 的
+   * 实际执行顺序若不能保证，init 会读到空值 → 报"配置不是合法 JSON" →
+   * 之后所有 webhook 都因"运行时未初始化"而无反应。
+   * 这条测试锁住自愈行为：tick 里定期重读配置，读到就自动初始化。
+   */
+  const host = createMockHost();
+  host.state.variables["xthb-config-json"] = null; /* 变量还没就绪 */
+  assertEqual(host.call.init(), "config_error", "启动时应报配置错误");
+  assertEqual(host.call.handle(envelope({
+    protocolVersion: 1, command: "stop_all", source: "s",
+  })).code, "invalid_config", "未初始化时载荷被拒（真机现象）");
+
+  /* 配置变量后来就绪（模拟 XToys 写变量晚于 customCode）。 */
+  host.state.variables["xthb-config-json"] = JSON.stringify(bridgeConfig());
+  assertEqual(host.call.tick(), "tick", "tick 应自动补读配置并正常跑完");
+  assertEqual(host.V("xthb-status"), "running", "补读成功后应进入 running");
+
+  /* 补读之后 webhook 必须恢复正常。 */
+  const accepted = host.call.handle(envelope({
+    protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
+    targets: [{ part: "nipple", intensity: 40 }],
+  }));
+  assertEqual(accepted.ok, true, "补读后 webhook 必须恢复正常");
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 40, "补读后输出必须正常");
+});
+
+test("配置始终不可读时不会无限刷日志（重试有上限）", () => {
+  const host = createMockHost();
+  host.state.variables["xthb-config-json"] = null;
+  host.call.init();
+  const before = host.state.logs.length;
+  for (let i = 0; i < 40; i += 1) host.call.tick();
+  const extra = host.state.logs.length - before;
+  assert(extra <= 40, `重试日志应有上限，实际新增 ${extra} 条`);
+  assertEqual(host.call.tick(), "not_initialized", "放弃重试后应明确返回 not_initialized");
+});
+
+test("配置不是合法 JSON 时把实际读到的内容打进日志（便于诊断）", () => {
+  const host = createMockHost();
+  host.state.variables["xthb-config-json"] = "这不是 JSON";
+  host.call.init();
+  const joined = host.state.logs.join("\n");
+  assert(joined.includes("配置不是合法 JSON"), "应报告解析失败");
+  assert(joined.includes("这不是 JSON"), "应把实际读到的内容打出来，而不是只说'不合法'");
+});
+
+test("配置值带 BOM / 首尾空白时仍能解析", () => {
+  const host = createMockHost();
+  host.state.variables["xthb-config-json"] = "\uFEFF  " + JSON.stringify(bridgeConfig()) + "  \n";
+  assertEqual(host.call.init(), "initialized", "BOM 与首尾空白应被容忍");
+});
+
 /* ============================================================== 汇总 */
 
 console.log(`\n${"-".repeat(64)}`);

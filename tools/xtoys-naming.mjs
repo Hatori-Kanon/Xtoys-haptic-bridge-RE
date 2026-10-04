@@ -137,9 +137,13 @@ export function buildBridgeConfig() {
       parts[part][metric] = channelId(metric, part);
     }
   }
+  /*
+   * 只放运行时真正需要的字段。**不含 knownParts** —— 运行时不做部位白名单
+   * （docs/03 §6.1：部位名是否可用完全由这张表决定）。把一份用不到的清单
+   * 塞进配置里，只会让"到底谁在限制部位名"变得含糊。
+   */
   return {
     protocolVersion: 1,
-    knownParts: KNOWN_PART_NAMES,
     parts,
     frequencySentinel: FREQUENCY_SENTINEL,
   };

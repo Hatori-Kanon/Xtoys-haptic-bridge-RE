@@ -142,7 +142,7 @@ function buildSchedulerJob() {
   return {
     steps: {
       START: {
-        actions: [customCode("safeCall(function(){xtoysBridgeTick();});")],
+        actions: [customCode("xtoysBridgeTick();")],
         triggers: [
           {
             type: "stepState",
@@ -172,7 +172,7 @@ function buildScript(runtimeSource) {
   const initialActions = [];
   for (const block of BLOCKS) initialActions.push(...zeroBlockActions(block));
   initialActions.push(updateVariable("xthb-config-json", JSON.stringify(BRIDGE_CONFIG)));
-  initialActions.push(customCode("safeCall(function(){xtoysBridgeInit();});"));
+  initialActions.push(customCode("xtoysBridgeInit();"));
   initialActions.push(startJob(SCHEDULER_JOB));
 
   /*
@@ -192,7 +192,13 @@ function buildScript(runtimeSource) {
   finalActions.push(stopJob(SCHEDULER_JOB));
   for (const block of BLOCKS) finalActions.push(...zeroBlockActions(block));
   for (const block of BLOCKS) finalActions.push(stopJob(block.outputJob));
-  finalActions.push(customCode("safeCall(function(){xtoysBridgeStopAll();});"));
+  /*
+   * 4. 最后才跑 JS 的清理函数。
+   *    这一条故意【不用 safeCall 包裹】——与已验证可导入的参考实现保持完全相同的
+   *    调用形状（直接调全局函数）。运行时内部已经把所有宿主调用包在 try/catch 里，
+   *    所以这里不需要再多一层；少一层就少一个"与已知可用形状不同"的变量。
+   */
+  finalActions.push(customCode("xtoysBridgeStopAll();"));
 
   return {
     initialActions,
@@ -204,7 +210,7 @@ function buildScript(runtimeSource) {
         channel: "webhook-a",
         parsedAction: "xtoys_game_bridge",
         actions: [
-          customCode("safeCall(function(){xtoysBridgeHandle(payload);});", [
+          customCode("xtoysBridgeHandle(payload);", [
             { name: "payload", value: "trigger-payload", expression: null },
           ]),
         ],
