@@ -215,22 +215,24 @@ $stepDefs += @{
   Inner = (Inner -Command 'stop_all' -OmitSequence)
 }
 
-# ---- 步骤 15：专测 Final Actions 的安全性时序（需要人工停 Script）----
+# ---- 步骤 15：精确测 Final Actions 的安全性时序（需要人工停 Script）----
 $stepDefs += @{
-  Id = 15; Title = 'JS 抛错后手动停 Script，硬件是否仍然归零（Final Actions 时序）'; NeedsRotator = $false
+  Id = 15; Title = 'Q1/Q2：Final Actions 里的 JS 抛错后，硬件是否仍归零、调度是否真停'; NeedsRotator = $false
   Expect = @(
-    '本步分两段：脚本先建立非零输出，再故意让 customCode 抛一个未捕获的异常。'
-    '抛错后脚本可能已经失效 —— 这正是要测的状态。'
-    '看到提示后请【手动在 XToys 里停止 Script】，然后观察设备是否归零。'
-    '若设备【不归零】：说明 XToys 在某个 Action 抛错后会中止后续 Final Action ——'
-    '那么我们"字面量归零排在 customCode 之前"的顺序就是【必需的】，否则会漏掉归零。'
-    '若设备归零：说明该顺序是有效保险（更稳，但没有它也能过）。'
+    '本步测两个问题（上一版探针测错了位置，这版才对准）：'
+    'Q1：Final Actions 里的 customCode 抛错后，排在它【后面】的字面量归零是否仍执行？'
+    'Q2：抛错导致调度 Job 可能没被停掉时，停 Script 之后设备会不会被再次驱动？'
+    '流程：先建立非零输出 → 发一条"武装"载荷（不影响当前运行）→'
+    '你手动停 Script（此时 xtoysBridgeStopAll 会在开头抛错）→ 观察设备是否归零。'
+    '然后我再发一条"加能量"命令：若设备又动了，说明调度 Job 没停（Q2 风险）。'
   ) -join ' '
   # 先建立非零输出（两个通道都给，确保能看到归零）。
   Inner = (Inner -Command 'set_baseline' -Sequence 9 -Targets @(
       @{ part = 'nipple'; estimIntensity = 20; vibrateIntensity = 20 }))
-  # 再由 customCode 主动抛错：走 safeCall 之外的路径才会真正抛出。
-  ThrowAfterMs = 800
+  ArmStopThrowAfterMs = 800
+  # 停 Script 后再发这条：若设备又动，说明调度 Job 没停。
+  ReviveInner = (Inner -Command 'set_baseline' -Sequence 10 -Targets @(
+      @{ part = 'nipple'; estimIntensity = 35; vibrateIntensity = 35 }))
   ManualStopRequired = $true
 }
 
@@ -361,33 +363,64 @@ foreach ($d in $selected) {
     Start-Sleep -Milliseconds 1200
   }
 
-  # 步骤 15：故意触发一个未捕获的 JS 异常，然后请用户手动停 Script。
-  if ($d.ContainsKey('ThrowAfterMs')) {
+  # 步骤 15：先"武装"下一次停 Script 抛错，再请你手动停 Script，最后测 Q2。
+  if ($d.ContainsKey('ArmStopThrowAfterMs')) {
     Write-Host ''
-    Write-Host '  现在故意让 customCode 抛一个未捕获的异常…' -ForegroundColor Yellow
-    Start-Sleep -Milliseconds $d.ThrowAfterMs
-    $throwInner = @{
+    Write-Host '  现在发一条"武装"载荷：让下一次停 Script 时 xtoysBridgeStopAll 在开头抛错…' -ForegroundColor Yellow
+    Start-Sleep -Milliseconds $d.ArmStopThrowAfterMs
+    $armInner = @{
       protocolVersion = 1
       command         = 'play'
       source          = $source
-      eventId         = 'acc-throw__XTHB_THROW_TEST__'
+      eventId         = 'acc-arm__XTHB_ARM_STOP_THROW__'
       sequence        = 1
       targets         = @(@{ part = 'nipple'; estimIntensity = 20; durationMs = 60000 })
     }
-    $throwPayload = New-Payload -Inner $throwInner
-    Write-Host "  触发载荷：$throwPayload" -ForegroundColor DarkGray
+    $armPayload = New-Payload -Inner $armInner
+    Write-Host "  武装载荷：$armPayload" -ForegroundColor DarkGray
     try {
-      $r3 = Invoke-WebRequest -Uri $uri -Method POST -ContentType 'application/json' -Body $throwPayload -TimeoutSec 20
-      Write-Host ("  已发送：HTTP {0}（异常发生在 XToys 内部，HTTP 仍会是 200）" -f $r3.StatusCode) -ForegroundColor DarkGray
+      $r3 = Invoke-WebRequest -Uri $uri -Method POST -ContentType 'application/json' -Body $armPayload -TimeoutSec 20
+      Write-Host ("  已发送：HTTP {0}" -f $r3.StatusCode) -ForegroundColor DarkGray
     } catch {
-      Write-Host ("  触发请求失败：{0}" -f $_.Exception.Message) -ForegroundColor Red
+      Write-Host ("  武装请求失败：{0}" -f $_.Exception.Message) -ForegroundColor Red
     }
-    Start-Sleep -Milliseconds 1200
+    Write-Host '  武装不影响当前运行 —— 输出应保持 20 不变。' -ForegroundColor DarkGray
+    Start-Sleep -Milliseconds 800
+
     Write-Host ''
     Write-Host '  ============================================================' -ForegroundColor Cyan
-    Write-Host '  请现在【手动在 XToys 里停止 Script】，然后观察设备。' -ForegroundColor Cyan
+    Write-Host '  请现在【手动在 XToys 里停止 Script】。' -ForegroundColor Cyan
+    Write-Host '  xtoysBridgeStopAll 会在开头抛错（日志应出现【诊断】那一行）。' -ForegroundColor Cyan
+    Write-Host '  Q1：观察设备【是否仍然归零】。' -ForegroundColor Cyan
     Write-Host '  ============================================================' -ForegroundColor Cyan
-    Read-Host '  停完并按回车继续' | Out-Null
+    $q1 = Read-Host '  停完并观察后：设备归零了吗？ [y]归零 / [n]没归零'
+    $results.Add([pscustomobject]@{
+      Step = (Format-StepLabel $d.Id); Title = "Q1 $($d.Title)"; Result = if ($q1 -match '^[yY]') { '符合' } else { '不符合' }
+      Note = '设备是否在 Final Actions 抛错后仍归零'
+    })
+
+    # Q2：停 Script 后再发一条"加能量"命令 —— 若设备又动，说明调度 Job 没停。
+    if ($d.ContainsKey('ReviveInner')) {
+      Write-Host ''
+      Write-Host '  Q2：停 Script 之后再发一条"加能量"命令，看设备会不会又被驱动…' -ForegroundColor Yellow
+      Write-Host '  重新启动 Script 前，这条命令应【无效】。' -ForegroundColor DarkGray
+      $revivePayload = New-Payload -Inner $d.ReviveInner
+      Write-Host "  加能量载荷：$revivePayload" -ForegroundColor DarkGray
+      try {
+        $r4 = Invoke-WebRequest -Uri $uri -Method POST -ContentType 'application/json' -Body $revivePayload -TimeoutSec 20
+        Write-Host ("  已发送：HTTP {0}" -f $r4.StatusCode) -ForegroundColor DarkGray
+      } catch {
+        Write-Host ("  请求失败：{0}" -f $_.Exception.Message) -ForegroundColor Red
+      }
+      Start-Sleep -Milliseconds 1500
+      $q2 = Read-Host '  设备有没有又被驱动（变强/振动恢复）？ [y]又动了 / [n]完全没动'
+      $results.Add([pscustomobject]@{
+        Step = (Format-StepLabel $d.Id); Title = "Q2 停 Script 后调度 Job 是否真停"
+        Result = if ($q2 -match '^[nN]') { '符合' } else { '不符合' }
+        Note = '又动了=调度Job没停（有硬件风险）；完全没动=已停'
+      })
+    }
+    continue
   }
 
   Write-Host ''

@@ -1605,21 +1605,19 @@ function xthbDescribeCommand(inner) {
 }
 
 /*
- * 诊断探针：故意抛出一个未被捕获的异常。
+ * 诊断探针（Q1）：让【下一次停 Script 时】xtoysBridgeStopAll() 在自己开头抛错。
  *
- * 唯一用途是验证【Final Actions 的时序防御到底有没有实际价值】：
- * docs/01 §7 声称"JS 抛错时 Final Actions 是唯一的硬件停止保障"，所以生成器把
- * 字面量归零排在了 customCode 之前。但"XToys 在某个 Action 抛错后是否还继续执行
- * 后续 Action"无法本地验证 —— 只能真机试。
+ * 目的：精确检验"Final Actions 内部的 customCode 抛错时，排在它【后面】的字面量
+ * 归零是否仍执行"。
  *
- * 触发方式：事件身份（source + eventId）以 "__XTHB_THROW_TEST__" 结尾。
- * 这条路径【刻意不经过 safeCall】，所以异常会真的抛出去 —— 那正是要测的状态。
+ * 注意：早期版本的这个探针是在 webhook 路径抛错 —— 那测的是另一件事（webhook 抛错后
+ * Script 还能不能正常停），而且那轮日志里的异常信息就是它。已删除，避免测错位置。
+ *
+ * 触发方式：发一条 eventId 含 __XTHB_ARM_STOP_THROW__ 的载荷把它"武装"，
+ * 之后你手动停 Script 时才会抛。
  */
-var XTHB_THROW_TEST_SUFFIX = "__XTHB_THROW_TEST__";
-
-function xtoysBridgeThrowForTest() {
-  throw new Error("XTHB deliberate throw for Final Actions timing test");
-}
+var XTHB_ARM_STOP_THROW_SUFFIX = "__XTHB_ARM_STOP_THROW__";
+var xthbStopThrowArmed = false;
 
 /*
  * 全局 Trigger 入口。
@@ -1673,14 +1671,14 @@ function xtoysBridgeHandle(payload) {
   xthbLog("收到 " + xthbDescribeCommand(inner));
 
   /*
-   * 诊断探针：身份以 __XTHB_THROW_TEST__ 结尾时故意抛错。
-   * 用于真机验证"Final Actions 在 JS 抛错后是否仍能归零"——
-   * 这条路径刻意不返回结果，让异常真的冲出 JS 边界。
+   * 诊断探针：身份含 __XTHB_ARM_STOP_THROW__ 时，把"停 Script 时抛错"武装起来。
+   * 不影响当前运行；只有你真的停 Script 时才会抛。用于精确验证 Q1/Q2。
    */
   if (xthbHasOwn(inner, "eventId") && xthbIsNonEmptyString(inner.eventId) &&
-    inner.eventId.indexOf(XTHB_THROW_TEST_SUFFIX) >= 0) {
-    xthbLog("【诊断】按请求故意抛错（验证 Final Actions 时序）");
-    xtoysBridgeThrowForTest();
+    inner.eventId.indexOf(XTHB_ARM_STOP_THROW_SUFFIX) >= 0) {
+    xthbStopThrowArmed = true;
+    xthbLog("【诊断】已武装：下次停 Script 时 xtoysBridgeStopAll 会在开头抛错");
+    return { ok: true, code: "armed_stop_throw" };
   }
 
   parsed = xthbParseCommand(inner);
@@ -1951,6 +1949,17 @@ function xthbExecute(parsed) {
 function xtoysBridgeStopAll() {
   xthbEvents = {};
   xthbBaselines = {};
+
+  /*
+   * 诊断探针（Q1）：武装后，在【归零之前】抛错。
+   * 用来精确验证"Final Actions 里的 customCode 抛错时，排在它后面的字面量归零是否仍执行"。
+   * 只在被显式武装时生效，正常流程永不触发。
+   */
+  if (xthbStopThrowArmed) {
+    xthbStopThrowArmed = false;
+    xthbLog("【诊断】xtoysBridgeStopAll 按请求在开头抛错");
+    throw new Error("XTHB deliberate throw at start of xtoysBridgeStopAll");
+  }
 
   if (xthbConfig === null) {
     /* 配置坏了也要尽量写零；Final Actions 的显式 UI 归零才是硬保障。 */
