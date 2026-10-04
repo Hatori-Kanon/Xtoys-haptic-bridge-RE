@@ -45,6 +45,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $source = 'acceptance'
 
+# 步骤显示号：内部 Id 41 是"步骤 4 的补充步"，对外显示成 4b。
+function Format-StepLabel {
+  param([int]$Id)
+  if ($Id -eq 41) { return '4b' }
+  return [string]$Id
+}
+
 # 解析 -Steps "3,13" / "3, 13" / "3"
 $stepFilter = @()
 if ($Steps) {
@@ -109,10 +116,30 @@ $stepDefs += @{
 }
 
 $stepDefs += @{
-  Id = 4; Title = '同强度新事件必须重新渐入（driveId 推送判据）'; NeedsRotator = $false
-  Expect = '在基线强度【没有变化】的前提下，再发一个与当前强度相同的短暂事件，应该能看到【又一次渐入脉冲】。若完全没有反应，说明推送判据退化成只比数值了。'
+  Id = 4; Title = '同强度新事件会重新驱动，但设备不一定有可见变化'; NeedsRotator = $false
+  Expect = @(
+    '本步【不看脉冲】，看的是运行时是否重新驱动了一次。'
+    '当前基线强度就是 15，新事件的目标值也是 15 —— 设备本来就在 15，'
+    '"从 15 渐入到 15"在体感上没有变化，这是正常的，不是缺陷。'
+    '预期：设备维持 15 不变，日志里出现一条 command=play 且未被 rejected。'
+    '要看"重新渐入"的可见效果，请跑下一步（4b）。'
+  ) -join ' '
   Inner = (Inner -Command 'play' -Sequence 1 -EventId 'acc-retrigger' -Targets @(
       @{ part = 'nipple'; intensity = 15; frequency = 30; durationMs = 900; rampUpMs = 300; rampDownMs = 300 }))
+}
+
+$stepDefs += @{
+  Id = 41; Title = '重推的可见效果：连击两次（应看到两次独立渐入）'; NeedsRotator = $false
+  Expect = @(
+    '会连发两击，强度相同（40），两击之间强度会回落到 0。'
+    '应观察到【两次独立、清晰可辨的渐入脉冲】，而不是一次。'
+    '这是重推机制真正起作用的场景 —— 与上一步的区别是"中间有没有回落"。'
+  ) -join ' '
+  Inner = (Inner -Command 'play' -Sequence 1 -EventId 'acc-hit-1' -Targets @(
+      @{ part = 'nipple'; intensity = 40; frequency = 30; durationMs = 500; rampUpMs = 300 }))
+  FollowUp = (Inner -Command 'play' -Sequence 1 -EventId 'acc-hit-2' -Targets @(
+      @{ part = 'nipple'; intensity = 40; frequency = 30; durationMs = 500; rampUpMs = 300 }))
+  FollowUpGapMs = 900
 }
 
 $stepDefs += @{
@@ -196,7 +223,7 @@ if ($List) {
   Write-Host ('=' * 72)
   foreach ($d in $stepDefs) {
     $tag = if ($d.NeedsRotator) { ' [需旋转器]' } else { '' }
-    Write-Host ("  {0,2}. {1}{2}" -f $d.Id, $d.Title, $tag)
+    Write-Host ("  {0,3}. {1}{2}" -f (Format-StepLabel $d.Id), $d.Title, $tag)
   }
   Write-Host ''
   Write-Host '用法：pwsh -File tools/Invoke-XtoysAcceptance.ps1            # 全部'
@@ -252,7 +279,7 @@ foreach ($d in $selected) {
   if ($quit) { break }
   Write-Host ''
   Write-Host ('-' * 72)
-  Write-Host ("步骤 {0} / {1}" -f $d.Id, $d.Title) -ForegroundColor Cyan
+  Write-Host ("步骤 {0} / {1}" -f (Format-StepLabel $d.Id), $d.Title) -ForegroundColor Cyan
   Write-Host ('-' * 72)
   Write-Host '应观察到：' -NoNewline
   Write-Host $d.Expect -ForegroundColor Yellow
@@ -293,6 +320,21 @@ foreach ($d in $selected) {
     Write-Host ("  请求失败：{0}" -f $_.Exception.Message) -ForegroundColor Red
     $results.Add([pscustomobject]@{ Step = $d.Id; Title = $d.Title; Result = 'send-failed'; Note = $_.Exception.Message })
     continue
+  }
+
+  # 步骤 4b：等第一击回落后再发第二击，用来看"两次独立渐入"。
+  if ($d.ContainsKey('FollowUp')) {
+    $gap = if ($d.ContainsKey('FollowUpGapMs')) { $d.FollowUpGapMs } else { 900 }
+    Write-Host ("  等 {0} ms 让第一击回落后再发第二击…" -f $gap) -ForegroundColor DarkGray
+    Start-Sleep -Milliseconds $gap
+    $payload2 = New-Payload -Inner $d.FollowUp
+    Write-Host "  第二击：$payload2" -ForegroundColor DarkGray
+    try {
+      $resp2 = Invoke-WebRequest -Uri $uri -Method POST -ContentType 'application/json' -Body $payload2 -TimeoutSec 20
+      Write-Host ("  已发送：HTTP {0}" -f $resp2.StatusCode) -ForegroundColor DarkGray
+    } catch {
+      Write-Host ("  第二击请求失败：{0}" -f $_.Exception.Message) -ForegroundColor Red
+    }
   }
 
   if ($d.Id -eq 3) {

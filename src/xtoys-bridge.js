@@ -928,7 +928,33 @@ function xthbMetricValue(intent, metric) {
  * durationMs 定义在 target 上）。早期实现把整个事件按 max(durationMs) 过期，
  * 会让 200ms 的一击持续输出 5 秒。
  */
+/*
+ * 候选收集缓存（每个 tick 内有效）。
+ *
+ * 同一个 (part, metric) 在一次 tick 里会被问两次 —— 一次为音量、一次为频率
+ * （estim Block 的 frequency 维度独立仲裁）。真机上出现过
+ * "JavaScript did not finish running in allotted time"，而 JS-Interpreter 里
+ * 每次收集都要遍历基线与事件表，所以这里按 (part, metric) 记住结果。
+ */
+var xthbCandidateCache = null;
+
+function xthbResetCandidateCache() {
+  xthbCandidateCache = {};
+}
+
 function xthbCollectCandidates(part, metric, nowMs) {
+  var key = part + "\u0000" + metric;
+  if (xthbCandidateCache !== null && xthbHasOwn(xthbCandidateCache, key)) {
+    return xthbCandidateCache[key];
+  }
+  var candidates = xthbCollectCandidatesUncached(part, metric, nowMs);
+  if (xthbCandidateCache !== null) {
+    xthbCandidateCache[key] = candidates;
+  }
+  return candidates;
+}
+
+function xthbCollectCandidatesUncached(part, metric, nowMs) {
   var candidates = [];
   var source;
   var key;
@@ -1451,6 +1477,7 @@ function xtoysBridgeTick() {
   }
   nowMs = xthbNowMs();
   xthbTicks = xthbTicks + 1;
+  xthbResetCandidateCache();
 
   /*
    * 到期处理分两级：
@@ -1827,6 +1854,8 @@ function xthbExecute(parsed) {
      * 最后才写状态：推送过程即使抛异常（宿主调用已被包住），
      * 也不会出现"状态说停了、实际还在输出"。
      */
+    /* 状态刚被清空，缓存必须失效，否则会按清空前的候选算出输出。 */
+    xthbResetCandidateCache();
     xthbForcePush = true;
     xthbPushOutputs(xthbComputeOutputs(nowMs = xthbNowMs()));
     XTHB_setVariable("xthb-status", "stopped_all");
@@ -1884,6 +1913,7 @@ function xtoysBridgeStopAll() {
     return "stopped";
   }
   xthbWriteZerosAndRecord();
+  xthbResetCandidateCache();
   xthbForcePush = true;
   xthbPushOutputs(xthbComputeOutputs(xthbNowMs()));
   XTHB_setVariable("xthb-status", "stopped");

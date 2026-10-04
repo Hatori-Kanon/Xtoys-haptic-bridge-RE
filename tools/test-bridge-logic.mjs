@@ -1502,6 +1502,120 @@ test("frequency-only 的 set_baseline 不会驱动 vibrate（真机同步现象�
   assertEqual(host.V(FREQ_NIPPLE), 30, "频率应精确写入 30");
 });
 
+section("17. 候选缓存不得返回过期数据");
+
+test("同一 tick 内第二次询问同一 (part,metric) 结果一致", () => {
+  const host = bootHost();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
+    targets: [{ part: "nipple", intensity: 55, durationMs: 60000 }],
+  }));
+  host.call.tick();
+  /* estim 的强度与频率两个维度都会收集一次候选，缓存必须让两次结果一致。 */
+  assertEqual(host.V(VOL.estimNipple), 55, "音量应正确");
+});
+
+test("状态变化后缓存失效：新事件立刻反映到输出", () => {
+  const host = bootHost();
+  host.call.tick();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
+    targets: [{ part: "nipple", intensity: 40 }],
+  }));
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 40, "新基线必须立刻生效（缓存不得返回空候选）");
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "set_baseline", source: "s", sequence: 2,
+    targets: [{ part: "nipple", intensity: 20 }],
+  }));
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 20, "第二次更新也必须生效");
+});
+
+test("stop_all 后缓存失效：归零必须立刻反映", () => {
+  const host = bootHost();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
+    targets: [{ part: "nipple", intensity: 60 }],
+  }));
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 60, "前置：有输出");
+  host.call.handle(envelope({ protocolVersion: 1, command: "stop_all", source: "s" }));
+  assertEqual(host.V(VOL.estimNipple), 0, "stop_all 必须立刻归零（不得用缓存里的旧候选）");
+});
+
+test("事件到期后缓存失效：回落必须立刻反映", () => {
+  const host = bootHost();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
+    targets: [{ part: "nipple", intensity: 10 }],
+  }));
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
+    targets: [{ part: "nipple", intensity: 90, durationMs: 200 }],
+  }));
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 90, "前置：事件期间 90");
+  host.testDate.current += 500;
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 10, "到期后应回落到基线（不得用缓存）");
+});
+
+section("18. 步骤 4 的真实结论：同值重推有效但不可感知");
+
+test("同强度新事件确实重推了 Job，但写入的目标值与当前相同", () => {
+  /*
+   * 真机反馈：步骤 4"没看到又一次的渐入脉冲"。
+   * 运行时的行为是对的 —— 它确实重新启动了输出 Job（driveId 变化），
+   * 但输出 Job 的动作是"把音量设为已经是的那个值"，设备不会因此产生可感知变化。
+   * 这条测试把这个事实固定下来，避免以后误以为重推没发生。
+   */
+  const host = bootHost();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "set_baseline", source: "acceptance", sequence: 1,
+    targets: [{ part: "nipple", intensity: 15, frequency: 30, rampUpMs: 800 }],
+  }));
+  host.call.tick();
+  const afterBaseline = host.pushCount();
+
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "acceptance", eventId: "acc-retrigger",
+    sequence: 1,
+    targets: [{ part: "nipple", intensity: 15, frequency: 30, durationMs: 900, rampUpMs: 300, rampDownMs: 300 }],
+  }));
+  host.call.tick();
+  assert(host.pushCount() > afterBaseline,
+    "同强度新事件必须重新启动输出 Job（driveId 变化）");
+  assertEqual(host.V(VOL.estimNipple), 15, "但目标值与当前相同 → 设备无可感知变化");
+});
+
+test("事件之间回到 0 时，同强度重推是可见的（这才是重推真正起作用的场景）", () => {
+  /*
+   * 步骤 4 看不到脉冲，是因为基线一直是 15。真实游戏里一击结束后会回到基线/0，
+   * 这时再来同强度一击就是 0 → ramp → 15，脉冲清晰可见。
+   * 这条测试证明重推机制在有回落的情况下确实产生两次独立的渐入。
+   */
+  const host = bootHost();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "acceptance", eventId: "hit1", sequence: 1,
+    targets: [{ part: "nipple", intensity: 40, durationMs: 200, rampUpMs: 300 }],
+  }));
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 40, "第一击输出 40");
+  host.testDate.current += 500;
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 0, "第一击到期回落到 0");
+
+  const before = host.pushCount();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "acceptance", eventId: "hit2", sequence: 1,
+    targets: [{ part: "nipple", intensity: 40, durationMs: 200, rampUpMs: 300 }],
+  }));
+  host.call.tick();
+  assert(host.pushCount() > before, "第二击必须重新推一次（0 → 40，脉冲可见）");
+  assertEqual(host.V(VOL.estimNipple), 40, "第二击输出同样 40");
+});
+
 /* ============================================================== 汇总 */
 
 console.log(`\n${"-".repeat(64)}`);
