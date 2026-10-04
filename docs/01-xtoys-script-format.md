@@ -183,6 +183,12 @@ Webhook 通道实测形状：
 - `variables`：把外部值映射成 JS 里可见的变量名。
 - `value: "trigger-payload"` 是**魔法值**：注入触发器的原始载荷（Webhook body）。
 - `resultVar` + `storeResult`：是否把返回值写回变量。
+- ⚠️ **`variables[].value` 必须是字符串**（或魔法值）。真机实测（2026-09-30）：
+  放一个**对象**进去，XToys 处理 Action 时直接抛
+  `TypeError: r([c...]).startsWith is not a function`（堆栈在 `M.processActions`），
+  整个 Script 启动失败。XToys 内部按字符串处理这个字段。
+  需要传结构化数据时**先 `JSON.stringify`**，在 JS 侧再 `JSON.parse`。
+  生成器 `tools/build-xtoys-script.mjs` 有对应自检，会在构建期挡住这种写法。
 
 ---
 
@@ -275,6 +281,12 @@ Script 的全局 JavaScript 运行在 **XToys JS-Interpreter** 中，约束：
 
 ✅ **已实测确认（2026-09-30，本地联调）**：**Webhook 端点对会被接收端整体拒绝的载荷也返回 HTTP 200。**
 因此 HTTP 状态码**不能**用来判断命令是否被接受 —— 只能看 Script 日志或诊断变量。见 `docs/06` §0.1。
+
+❌ **实测确认不可靠（2026-09-30，真机）**：**`updateVariable` 写入的长 JSON 字符串，再由 JS
+`getVariable` 读回来时会损坏。** 实测写进去 494 字符的合法 JSON，读回来只有 91 字符，
+且所有值变成 `undefined`。参考实现用同样动作传过 1763 字符的配置并能导入，所以不像单纯的长度
+上限，**原因未查明**。规避方式：需要传给 JS 的配置走 `customCode` 的 `variables` 注入
+（与触发器传 `payload` 同一机制），不要依赖"写变量再读回来"。见 `docs/07` §1.1。
 
 ❌ **未验证**：真实设备行为、JS-Interpreter 的实际执行速度与调度抖动、导出 JSON 与导入 JSON 是否存在字段差异（旧文档要求每次测试记录差异，一直是 `待填写`）。
 
