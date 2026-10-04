@@ -267,7 +267,8 @@ Script 的全局 JavaScript 运行在 **XToys JS-Interpreter** 中，约束：
 1. `updateJob stop`：停止调度器 Job（不再有新的计算进来）。
 2. 对每个已配置 Block：`setVolume percentVolume=0`（`rampTime=0`）—— **字面量归零，不依赖 JS**。
 3. `updateJob stop`：停止全部输出 Job。
-4. `customCode`：调用 JS 清理函数（包在 `safeCall` 里）。
+4. `customCode`：调用 JS 清理函数。**直接调全局函数**，与已验证可导入的参考实现保持
+   相同的调用形状；运行时内部已把所有宿主调用包在 try/catch 里，无需额外包装。
 
 > ⚠️ **顺序是有意这么排的（2026-09-30 修正；2026-10-05 真机证实为必需）。**
 > 旧参考实现把 JS 归零放在第 1 条，但本节末尾又说"JS 抛错时 Final Actions 是唯一保障"

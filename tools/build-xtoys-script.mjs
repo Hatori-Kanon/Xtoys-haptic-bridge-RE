@@ -218,9 +218,9 @@ function buildScript(runtimeSource) {
   for (const block of BLOCKS) finalActions.push(stopJob(block.outputJob));
   /*
    * 4. 最后才跑 JS 的清理函数。
-   *    这一条故意【不用 safeCall 包裹】——与已验证可导入的参考实现保持完全相同的
-   *    调用形状（直接调全局函数）。运行时内部已经把所有宿主调用包在 try/catch 里，
-   *    所以这里不需要再多一层；少一层就少一个"与已知可用形状不同"的变量。
+   *    刻意保持与已验证可导入的参考实现【相同的调用形状】：直接调全局函数。
+   *    运行时内部已把所有宿主调用包在 try/catch 里，所以这里不需要额外包装；
+   *    少一层包装就少一个"与已知可用形状不同"的变量。
    */
   finalActions.push(customCode("xtoysBridgeStopAll();"));
 

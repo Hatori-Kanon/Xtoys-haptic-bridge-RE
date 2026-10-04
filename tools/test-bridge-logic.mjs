@@ -128,8 +128,6 @@ function createMockHost() {
     },
     stopAll: () => runInContext("xtoysBridgeStopAll();", context),
     raw: (expr) => runInContext(expr, context),
-    /* 走 safeCall 的入口，用于验证异常被包住而不是冲出去。 */
-    safe: (expr) => runInContext("safeCall(function(){" + expr + "});", context),
     injectFault: (f) => Object.assign(fault, f),
   };
 
@@ -1004,20 +1002,6 @@ test("stop_all 在宿主 API 抛异常时仍然把所有音量写零并如实返
   assertEqual(host.V(VOL.vibrateNipple), 0, "vibrate 必须归零");
   assertEqual(host.V(VOL.estimClitoris), 0, "所有通道都必须归零");
   assert(host.V("xthb-host-errors") > 0, "应记录被吞掉的宿主异常次数");
-});
-
-test("safeCall 包住入口，异常不冲出 JS 边界", () => {
-  const host = bootHost();
-  const threw = (() => {
-    try {
-      host.call.safe("throw new Error('boom');");
-      return false;
-    } catch (err) {
-      return true;
-    }
-  })();
-  assertEqual(threw, false, "safeCall 不应让异常传播出去");
-  assertEqual(host.V("xthb-status"), "error", "应记录 error 状态");
 });
 
 test("停止函数在宿主抛异常时也不中断归零", () => {

@@ -1378,28 +1378,6 @@ function xthbCountParts() {
 }
 
 /*
- * 所有从 UI Action 调进来的入口都包在 safeCall 里。
- *
- * 这样任何一个意外异常都不会冲到 XToys 的 Action 执行器里 —— Final Actions
- * 里那条字面量归零 Action 才是硬保障，但我们不希望因为一个 JS 异常就让
- * 后面的 Action 有没有机会执行变成未知数（docs/01 §7）。
- *
- * 注意：safeCall 内部【只包住】，不要试图在里面"补救"硬件状态 —— 补救是
- * Final Actions 的字面量 Action 的职责。
- */
-function safeCall(body) {
-  try {
-    return body();
-  } catch (err) {
-    xthbHostErrors = xthbHostErrors + 1;
-    xthbLastError = "safeCall: " + err;
-    xthbLog("safeCall 捕获异常：" + err);
-    XTHB_setVariable_raw("xthb-status", "error");
-    return null;
-  }
-}
-
-/*
  * 初始化。
  *
  * injectedConfig：Initial Actions 通过 customCode 的 variables 直接注入的配置。
@@ -1605,21 +1583,6 @@ function xthbDescribeCommand(inner) {
 }
 
 /*
- * 诊断探针（Q1）：让【下一次停 Script 时】xtoysBridgeStopAll() 在自己开头抛错。
- *
- * 目的：精确检验"Final Actions 内部的 customCode 抛错时，排在它【后面】的字面量
- * 归零是否仍执行"。
- *
- * 注意：早期版本的这个探针是在 webhook 路径抛错 —— 那测的是另一件事（webhook 抛错后
- * Script 还能不能正常停），而且那轮日志里的异常信息就是它。已删除，避免测错位置。
- *
- * 触发方式：发一条 eventId 含 __XTHB_ARM_STOP_THROW__ 的载荷把它"武装"，
- * 之后你手动停 Script 时才会抛。
- */
-var XTHB_ARM_STOP_THROW_SUFFIX = "__XTHB_ARM_STOP_THROW__";
-var xthbStopThrowArmed = false;
-
-/*
  * 全局 Trigger 入口。
  * 参数是 Trigger 注入的载荷，真机上可能是【外层封装】也可能已经是【内层载荷】；
  * 两种形状都必须能处理（docs/02 §1 的封装仍要支持，因为手工 curl 测试就是那个形状）。
@@ -1669,17 +1632,6 @@ function xtoysBridgeHandle(payload) {
     return xthbFail("invalid_payload", "内层不是对象");
   }
   xthbLog("收到 " + xthbDescribeCommand(inner));
-
-  /*
-   * 诊断探针：身份含 __XTHB_ARM_STOP_THROW__ 时，把"停 Script 时抛错"武装起来。
-   * 不影响当前运行；只有你真的停 Script 时才会抛。用于精确验证 Q1/Q2。
-   */
-  if (xthbHasOwn(inner, "eventId") && xthbIsNonEmptyString(inner.eventId) &&
-    inner.eventId.indexOf(XTHB_ARM_STOP_THROW_SUFFIX) >= 0) {
-    xthbStopThrowArmed = true;
-    xthbLog("【诊断】已武装：下次停 Script 时 xtoysBridgeStopAll 会在开头抛错");
-    return { ok: true, code: "armed_stop_throw" };
-  }
 
   parsed = xthbParseCommand(inner);
   if (parsed.error) {
@@ -1949,17 +1901,6 @@ function xthbExecute(parsed) {
 function xtoysBridgeStopAll() {
   xthbEvents = {};
   xthbBaselines = {};
-
-  /*
-   * 诊断探针（Q1）：武装后，在【归零之前】抛错。
-   * 用来精确验证"Final Actions 里的 customCode 抛错时，排在它后面的字面量归零是否仍执行"。
-   * 只在被显式武装时生效，正常流程永不触发。
-   */
-  if (xthbStopThrowArmed) {
-    xthbStopThrowArmed = false;
-    xthbLog("【诊断】xtoysBridgeStopAll 按请求在开头抛错");
-    throw new Error("XTHB deliberate throw at start of xtoysBridgeStopAll");
-  }
 
   if (xthbConfig === null) {
     /* 配置坏了也要尽量写零；Final Actions 的显式 UI 归零才是硬保障。 */

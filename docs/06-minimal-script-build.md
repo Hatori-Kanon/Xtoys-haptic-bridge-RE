@@ -183,24 +183,24 @@ pwsh -File tools/Invoke-XtoysAcceptance.ps1 -SkipUnverifiable
 | 12 | 同 `targets` 里同部位重复 | 设备无反应，日志出现 `rejected invalid_targets` |
 | 13 | 相同 `sequence` 连发两次 | 第二次无效，日志出现 `rejected invalid_sequence` |
 | 14 | `stop_all` | **所有输出立刻归零** |
-| **15** | **故意让 JS 抛未捕获异常 → 你手动停 Script** | 设备**是否仍然归零**。见 §6.1 —— 这条决定 Final Actions 的时序防御有无实际价值 |
 
-### 6.1 步骤 15：为什么值得单独验（**已验，结论重要**）
+
+### 6.1 Final Actions 的时序（**已验证，无需再跑**）
 
 `docs/01` §7 声称"JS 抛错时 Final Actions 是唯一的硬件停止保障"，所以生成器把**字面量归零
-排在 `customCode` 之前**。这条顺序原本只是凭推理做的，无法本地验证。
+排在 `customCode` 之前**。这条顺序原本只是凭推理做的。
 
 ✅ **2026-10-05 真机验证完成，结论：这条顺序是必需的。**
 
-用"武装式"探针让**排在 Final Actions 最后一条**的 `customCode xtoysBridgeStopAll()`
-在开头抛错，然后手动停 Script。日志显示的时序：
+当时用一个"武装式"探针让**排在 Final Actions 最后一条**的 `customCode` 在开头抛错，
+然后手动停 Script。日志显示的时序：
 
 ```
 [xthb] 【诊断】xtoysBridgeStopAll 按请求在开头抛错
 ✗ Error: XTHB deliberate throw at start of xtoysBridgeStopAll
 ```
 
-而 Final Actions 列表实际执行的是：
+Final Actions 实际执行的是：
 
 ```
 1.     stopJob(scheduler)     ✅ 执行了
@@ -215,13 +215,14 @@ pwsh -File tools/Invoke-XtoysAcceptance.ps1 -SkipUnverifiable
 2. 因此，**若按旧顺序把 `customCode` 放在第 1 条**，这次抛错时**就不会**有字面量归零被执行
    —— 设备将停在上一个非零输出上**持续通电**。
    **那条顺序调整是真正的安全要求，不是可选的保险。**
+3. 停 Script 后再发一条"加能量"命令，设备**完全没动** → 调度 Job 确实已停。
 
-**Q2（调度 Job 是否真停）**：停 Script 后再发一条"加能量"命令，设备**完全没动** → 调度
-Job 确实已停。
-
-> **方法论教训**：第一版探针是在 **webhook 路径**抛错，而且为了让异常"真的抛出去"
-> 绕过了 `safeCall` —— 那验证的是一个**生产里不存在的路径**。改为"武装式"探针
-> （在真实路径 Final Actions 上抛错）之后才测准。
+> **验证完成后的清理**：那次验证用的探针（运行时里一个"遇到特殊 eventId 就抛错"的钩子）
+> **已从生产代码和验收脚本中全部删除**。它验证的结论已固化在本文档与生成器的自检里，
+> 不需要长期保留一个只为测试存在的后门。
+>
+> **方法论教训（值得记住）**：第一版探针在 **webhook 路径**抛错，而且为了让异常"真的抛出"
+> 还绕过了当时的安全包装 —— 那验证的是一个**生产里不存在的路径**。
 > **不要为了验证安全机制而先绕过安全机制。**
 
 ---
