@@ -1285,10 +1285,14 @@ function xtoysBridgeInit(injectedConfig) {
   var parsed = xthbParseConfig(injectedConfig);
 
   if (injectedConfig !== undefined && injectedConfig !== null) {
-    /* 诊断：把注入值的类型与长度打出来，便于真机上核对传值是否完整。 */
+    /*
+     * 诊断：把注入值的类型与长度打出来，便于真机上核对传值是否完整。
+     * 刻意不用 JSON.stringify —— 参考实现只证明了 JSON.parse 在 XToys 的
+     * JS-Interpreter 里可用，没证明 stringify 可用。这里只想拿到一个长度。
+     */
     quoted = xthbIsNonEmptyString(injectedConfig)
       ? injectedConfig
-      : (typeof injectedConfig === "object" ? JSON.stringify(injectedConfig) : String(injectedConfig));
+      : String(injectedConfig);
     xthbInjectedInfo = (typeof injectedConfig) + "/" + (quoted ? quoted.length : 0) + "字符";
   } else {
     xthbInjectedInfo = "未注入（回退读变量）";

@@ -183,8 +183,15 @@ function buildScript(runtimeSource) {
    * 备路：仍然 updateVariable 写一份到 Script 变量，供 tick 补读与诊断。
    */
   initialActions.push(updateVariable("xthb-config-json", JSON.stringify(BRIDGE_CONFIG)));
+  /*
+   * ⚠️ variables[].value 必须是【字符串】。
+   * 真机实测（2026-09-30）：把配置对象直接放进 value 会让 XToys 处理 Action 时
+   * 抛 `TypeError: ....startsWith is not a function`（堆栈在 M.processActions），
+   * 因为它在内部按字符串判断这个值。触发器传 payload 用的是字符串魔法值，所以可用。
+   * 这里统一传 JSON 文本；运行时同时接受字符串与对象，不依赖某一种。
+   */
   initialActions.push(customCode("xtoysBridgeInit(cfgJson);", [
-    { name: "cfgJson", value: BRIDGE_CONFIG, expression: null },
+    { name: "cfgJson", value: JSON.stringify(BRIDGE_CONFIG), expression: null },
   ]));
   initialActions.push(startJob(SCHEDULER_JOB));
 
@@ -329,6 +336,29 @@ function selfCheck() {
       .filter(([, job]) => job.steps.START.actions.some((a) => a.channel === block.channelId));
     if (referencing.length !== 1 || referencing[0][0] !== block.outputJob) {
       errors.push(`通道 ${block.channelId} 的输出 Job 引用异常：${referencing.map((r) => r[0]).join(",")}`);
+    }
+  }
+
+  /* 9. variables[].value 必须是字符串或魔法值。
+   * 真机实测（2026-09-30）：把配置【对象】直接放进 value，会让 XToys 处理 Action 时
+   * 抛 `TypeError: ....startsWith is not a function`（堆栈在 M.processActions），
+   * 整个 Script 启动失败。XToys 内部按字符串处理这个字段。 */
+  const MAGIC_VALUES = ["trigger-payload"];
+  const allActionBuckets = [
+    ...script.initialActions,
+    ...script.finalActions,
+    ...script.globalTriggers.flatMap((t) => t.actions),
+    ...Object.values(script.jobs).flatMap((job) =>
+      Object.values(job.steps).flatMap((step) => step.actions)),
+  ];
+  for (const a of allActionBuckets) {
+    if (a.type !== "customCode" || !Array.isArray(a.variables)) continue;
+    for (const v of a.variables) {
+      if (typeof v.value === "string") continue;
+      if (MAGIC_VALUES.includes(v.value)) continue;
+      errors.push(
+        `customCode 的 variables[].value 必须是字符串，实际是 ${typeof v.value}` +
+        `（变量 ${v.name}）—— 真机上 XToys 会抛 startsWith is not a function`);
     }
   }
 
