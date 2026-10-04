@@ -1,45 +1,52 @@
-# 游戏侧插件编写指南
+# 游戏侧桥接插件编写指南
 
-> **这份文档是写给"要写游戏侧桥接"的人（或另一个智能体）的。**
-> 只读这一篇，就能写出一份和本项目 XToys 接收端对得上的游戏侧插件。
+> **本文是自包含的。** 只读这一篇，就能写出一份能和 XToys 接收端对得上的游戏侧插件。
 >
-> 接收端的权威规格在 `docs/02-webhook-protocol.md` / `docs/03-protocol-mapping.md`；
-> 本文是"从游戏侧出发"的落地版本，两者如有冲突**以那两份为准**。
->
-> 最后更新：2026-10-05
+> 适用对象：要为某个游戏写"把游戏事件转发给 XToys"桥接的人或智能体。
+> 不需要了解 XToys 脚本内部实现，也不需要读本项目的其它文件。
 
 ---
 
-## 0. 先明确分工（不要越界）
+## 0. 系统是什么、边界在哪
 
 ```
-┌──────────────┐   逻辑意图：哪个部位、多大强度、多久     ┌────────────────────┐
-│  游戏侧插件   │ ──────────────────────────────────► │  XToys Script（已完工）│
-│  （你来写）   │   POST Webhook                       │  负责裁决 + 驱动物理设备 │
-└──────────────┘                                      └────────────────────┘
+┌──────────────────┐   逻辑意图：哪个部位、多大强度、多久    ┌─────────────────────┐
+│  游戏侧桥接（你写）│ ───────────────────────────────────► │  XToys Script（已有） │
+│  读游戏内部状态    │   POST Webhook                        │  裁决 + 驱动物理设备   │
+└──────────────────┘                                       └─────────────────────┘
 ```
 
-| 谁负责 | 内容 |
-| --- | --- |
-| **游戏侧（你）** | 读游戏内部状态；翻译成**逻辑部位 + 强度**；发协议；本地冷却/去重 |
-| **XToys 侧（已完成）** | 部位→Block 映射；多事件仲裁；ramp；把结果写给 E-Stim / 振动 / 旋转 |
+**接收端（XToys 侧）是怎么工作的**，理解这一点你才知道边界在哪：
 
-**三条硬边界**（违反就会破坏整个设计的解耦）：
+- XToys Script 里有一组**输出槽**，每个槽对应一个物理执行器或它的一个子通道
+  （例如"某部位的 E-Stim"、"某部位的振动"、"某部位的旋转"）。
+- **用户**在 XToys 界面上把这些槽绑定到自己的实际设备。**你既不知道也不需要知道**
+  用户接了几台设备、每个槽绑到了什么。
+- 你发出的每条命令说的是："**某个逻辑部位**现在应该有**多大强度**"。
+  接收端查一张**映射表**（用户配置的），决定这个部位的这一路强度写到哪个槽。
+- 接收端每 **100 ms** 计算一次每个槽当前该输出多少，然后把结果写给设备。
+  所以**你不需要自己控制发送节奏**——密集事件天然会在接收端被合并。
 
-1. 🚫 **游戏侧代码里不得出现设备名、通道名、Job 名、Block 名。**
-   你只发 `part`（逻辑部位），**不关心**用户接了几台设备、接到了哪个部位。
-2. 🚫 **不要试图控制设备最大强度/最大旋转速度。** 那是用户在 XToys 设备设置里的选择。
-   协议里也没有这样的字段。
-3. 🚫 **不要在游戏侧实现"部位→设备"的映射。** 那是 XToys 侧的配置，改了不用动你。
+**三条硬边界**（越界就会破坏整个设计的解耦）：
+
+1. 🚫 **代码里不得出现设备名、通道名、输出槽名。** 你只发**逻辑部位**。
+2. 🚫 **不得试图控制设备的最大强度 / 最大旋转速度。** 那是用户在 XToys 设备设置里的
+   选择；协议里也没有这样的字段。
+3. 🚫 **不要自己实现"部位 → 设备"的映射。** 那是接收端的配置，用户改配置时不需要动你。
+
+**你负责的只有三件事**：读游戏状态 → 翻译成逻辑部位+强度 → 按协议发出去。
 
 ---
 
-## 1. 传输：Webhook 怎么发
+## 1. 传输：怎么发
 
 ```
 POST https://webhook.xtoys.app/<Webhook ID>
 Content-Type: application/json
 ```
+
+`<Webhook ID>` 由用户在 XToys 里生成并提供给你（**不要把它硬编码进提交的文件**；
+用运行时配置或用户输入）。
 
 Body 是**固定外层封装**：
 
@@ -51,17 +58,19 @@ Body 是**固定外层封装**：
 ```
 
 - `action` 是**固定的路由名**，永远是 `xtoys_game_bridge`。**不要**换成游戏事件名。
-- `payload` 必须是**字符串**（内层对象先 `JSON.stringify` 再放进去），不是嵌套对象。
+- `payload` 必须是**字符串**：先把内层对象 `JSON.stringify`，再作为字符串放进 `payload`。
+  **不要**把内层对象直接嵌进去。
 
-> ✅ **实测确认（2026-10-05）**：Webhook 对**会被整体拒绝的载荷也返回 HTTP 200**。
-> **所以 HTTP 状态码完全不能用来判断命令是否被接受。**
-> 想知道是否生效，只能看 XToys 的 Script 日志（接收端会记 `收到的命令摘要`、
-> `rejected <code>`、`ignored <detail>`），或读诊断变量
-> `xthb-rejected-count` / `xthb-ignored-count` / `xthb-last-error` / `xthb-last-ignored`。
+### 1.1 ⚠️ HTTP 200 不代表命令生效
 
-> ⚠️ 顺带说明（你不需要为它做任何事，但读日志时会看到）：
-> XToys 的 trigger 把外层剥掉后才交给 JS，所以接收端内部只看到内层对象。
-> 接收端**两种形状都接受**，所以你按上面的封装发就对了。
+**实测确认：接收端对会被整体拒绝的载荷也返回 HTTP 200。**
+
+所以：
+
+- **不要**用 HTTP 状态码或响应体判断成功。
+- 想知道命令是否被接受，只能看 **XToys 的 Script 日志**（见 §8）。
+- 因此请不要设计"发送失败就重试"的逻辑 —— 你无法从返回值区分"成功"和"被拒绝"。
+  重复投递反而可能造成重复刺激（接收端会用序号挡掉一部分，见 §5.4）。
 
 ---
 
@@ -71,33 +80,43 @@ Body 是**固定外层封装**：
 
 | 字段 | 类型 | 必填性 | 说明 |
 | --- | --- | --- | --- |
-| `protocolVersion` | number | **必填** | 固定 `1` |
-| `command` | string | **必填** | `play` / `update` / `stop` / `set_baseline` / `stop_all` /（`test` 预检） |
-| `source` | string | **必填** | 你的插件标识，稳定即可（如 `"repetition"`）。≤64 字符，**禁含控制字符** |
-| `eventId` | string | `play`/`update` 必填 | 一次有限事件的标识。≤64 字符，**禁含控制字符** |
-| `sequence` | number | 见下 | 同 `source + eventId` 的版本号，必须**严格递增**。`test` 不需要 |
-| `targets` | array | 见下 | 目标列表，见 §3 |
+| `protocolVersion` | number | **必填** | 固定为 `1` |
+| `command` | string | **必填** | 见 §2.2 |
+| `source` | string | **必填** | 你的插件标识。≥1 字符，≤64 字符，**禁含控制字符**。同一插件用同一个值即可 |
+| `eventId` | string | `play`/`update` 必填 | 一次有限事件的标识，≤64 字符，**禁含控制字符** |
+| `sequence` | number | 见 §2.2 / §5.4 | 同 `source + eventId` 的版本号，必须**严格递增** |
+| `targets` | array | 视命令 | 目标列表，见 §3 |
 
 ### 2.2 六个命令
 
 | 命令 | 作用 | 什么时候用 |
 | --- | --- | --- |
-| `play` | 创建/替换一个**有限事件**（有 `durationMs`，到期自动消失） | 一次攻击、一次命中、"现在这一下" |
-| `update` | 用**更高 `sequence`** 替换同一 `source+eventId` 的整个目标集 | 同一个事件要**改强度**或**换旋转方向** |
-| `stop` | 停某个事件 / 某些部位 | 提前结束（如被打断） |
-| `set_baseline` | 替换该 `source` 的**基线快照**（持续状态，无时长） | 异常状态、拘束阶段、持续发情 |
-| `stop_all` | **紧急全停**：清空所有来源的所有状态 | 战斗结束、游戏退出、玩家按了急停 |
-| `test` | 只校验不驱动硬件 | 联调时确认协议格式对不对 |
+| `play` | 创建/替换一个**有限事件**（必须带正 `durationMs`，到期自动消失） | 一次攻击、一次命中、"现在这一下" |
+| `update` | 用**更高的 `sequence`** 替换同一 `source+eventId` 的**整个** target 集 | 同一事件要改强度、或换旋转方向 |
+| `stop` | 提前结束某个事件 / 某些部位 | 攻击被打断、状态提前解除 |
+| `set_baseline` | 替换该 `source` 的**基线快照**（持续状态，没有时长） | 异常状态、拘束阶段、持续发情 |
+| `stop_all` | **紧急全停**：清空所有来源的所有状态 | 战斗结束、退出游戏、玩家急停 |
+| `test` | 只校验格式，**不驱动任何硬件** | 联调时确认协议写对没有 |
 
-### 2.3 `play` / `update` 必须带正 `durationMs`
+各命令对 `eventId` / `sequence` / `targets` 的要求：
 
-内层对象：
+| 命令 | `eventId` | `sequence` | `targets` |
+| --- | --- | --- | --- |
+| `play` / `update` | **必填** | **必填**（严格递增） | **必填且非空** |
+| `set_baseline` | 不用（给了也忽略） | **必填**（同样严格递增，见 §5.5） | 必填；**可以是空数组**（= 清空基线） |
+| `stop` | 可选 | 不用 | 可选；至少要给 `eventId` 或 `targets` 之一 |
+| `stop_all` | 不用 | 不用 | 不用 |
+| `test` | 不用 | **不用** | 必填 |
+
+### 2.3 三个命令的例子
+
+**一次命中（`play`）**：
 
 ```json
 {
   "protocolVersion": 1,
   "command": "play",
-  "source": "repetition",
+  "source": "my-game",
   "eventId": "hit-0042",
   "sequence": 1,
   "targets": [
@@ -107,30 +126,52 @@ Body 是**固定外层封装**：
 }
 ```
 
+**持续状态（`set_baseline`）**：
+
+```json
+{
+  "protocolVersion": 1,
+  "command": "set_baseline",
+  "source": "my-game",
+  "sequence": 7,
+  "targets": [
+    { "part": "nipple", "estimIntensity": 20, "vibrateIntensity": 20, "frequency": 30 }
+  ]
+}
+```
+
+**紧急全停（`stop_all`）**：
+
+```json
+{ "protocolVersion": 1, "command": "stop_all", "source": "my-game" }
+```
+
 ---
 
-## 3. `targets` 是协议的核心
+## 3. `targets`：协议的核心
 
-### 3.1 一条 target 的字段
+### 3.1 一条 target 的完整字段
 
-| 字段 | 类型 / 范围 | 说明 |
-| --- | --- | --- |
-| `part` | string，**必填** | **逻辑部位**。见 §4 的规范清单 |
-| `estimIntensity` | number 0–100 | **E-Stim 通道**强度。不给 = 不驱动 E-Stim |
-| `vibrateIntensity` | number 0–100 | **振动通道**强度。不给 = 不驱动振动 |
-| `frequency` | number 0–100 | 仅 E-Stim 的频率。**不给 = 保持设备当前频率**（见 §5.3） |
-| `rotateSpeed` | number 0–100 | 旋转速度。**不从任何强度推导** |
-| `rotateDirection` | `clockwise` / `counterclockwise` | `rotateSpeed > 0` 时**必填** |
-| `durationMs` | number ≤ 600000 | **仅 `play`/`update` 需要**，必须为正 |
-| `rampUpMs` | number，默认 0 | 数值**升高**时的渐入时间（毫秒） |
-| `rampDownMs` | number，默认 0 | 数值**降低 / 停止 / 到期**时的渐出时间 |
-| `priority` | number，默认 0 | 同部位多事件竞争时的**第一级**判据。默认 0 可完全不发 |
+| 字段 | 类型 / 范围 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `part` | string | **必填** | **逻辑部位**，见 §4 |
+| `estimIntensity` | number 0–100 | 缺失 | **E-Stim 那一路**的强度。缺失 = 不驱动 E-Stim |
+| `vibrateIntensity` | number 0–100 | 缺失 | **振动那一路**的强度。缺失 = 不驱动振动 |
+| `frequency` | number 0–100 | 缺失 | 仅 E-Stim 的频率。**缺失 = 保持设备当前频率**（见 §5.3） |
+| `rotateSpeed` | number 0–100 | 缺失 | 旋转速度。**不从任何强度推导** |
+| `rotateDirection` | `clockwise` / `counterclockwise` | 缺失 | `rotateSpeed > 0` 时**必填** |
+| `durationMs` | number ≥ 1，≤ 600000 | 缺失 | **仅 `play`/`update` 需要**，必须为正 |
+| `rampUpMs` | number ≥ 0，≤ 600000 | `0` | 数值**升高**时的渐入时间（毫秒） |
+| `rampDownMs` | number ≥ 0，≤ 600000 | `0` | 数值**降低 / 停止 / 到期**时的渐出时间 |
+| `priority` | number | `0` | 同部位多来源竞争时的**第一级**判据，见 §5.6 |
 
-### 3.2 ⭐ 三条容易搞错、且会静默出错的规则
+**所有数值必须是有限数。** 你没有、也不应该有办法设置设备的最大强度或最大旋转速度。
+
+### 3.2 ⭐ 三条最容易错、且会静默出错的规则
 
 **规则一：一个部位在一条命令的 `targets` 里只能出现一次。**
 
-❌ 错（后面那条会静默覆盖前面那条）：
+❌ 错（第二条会覆盖第一条，静默丢数据）：
 
 ```json
 "targets": [
@@ -152,14 +193,13 @@ Body 是**固定外层封装**：
 
 **规则二：`estimIntensity` 与 `vibrateIntensity` 是两条独立通道，互不推导。**
 
-这是 2026-10-05 的协议改动：早期用一个 `intensity` 同时驱动两条通道，导致
-"同一部位同时用 E-Stim 与振动"的双模设备无法分别控制。现在：
-
-- 只给 `estimIntensity` → **只有 E-Stim 动，振动保持不动**
+- 只给 `estimIntensity` → **只有 E-Stim 动，振动完全不动**
 - 只给 `vibrateIntensity` → 只有振动动
 - 两个都给 → 两条通道各按各的值输出
 
-✅ 双模设备的写法（同一部位，E-Stim 强、振动弱）：
+这一条是**有意设计**的：让"同一部位同时使用 E-Stim 与振动"的设备能被分别控制。
+
+✅ 双模设备写法（同一部位：E-Stim 强、振动弱）：
 
 ```json
 "targets": [
@@ -168,185 +208,227 @@ Body 是**固定外层封装**：
 ]
 ```
 
-> ⚠️ **`intensity` 这个字段已废除。** 发它会被当成"没有驱动指标"而**整体拒绝** ——
-> 这是有意的，静默忽略会让你以为生效了。旧代码里如果用了 `intensity`，必须改名。
+> ⚠️ **没有 `intensity` 这个字段。** 早期版本用一个 `intensity` 同时驱动两条通道，
+> **已废除**。发 `intensity` 会被当成"没有驱动指标"而**整体拒绝** ——
+> 这是有意的，静默忽略会让你以为生效了。
 
 **规则三：一条 target 至少要有一个"驱动指标"。**
 
-驱动指标 = `estimIntensity` / `vibrateIntensity` / `frequency` / `rotateSpeed`（出现即算，
-**含 `0`**）。`rotateDirection` 单独出现**不算**。
+驱动指标 = `estimIntensity` / `vibrateIntensity` / `frequency` / `rotateSpeed`
+（**出现即算，含 `0`**）。`rotateDirection` 单独出现**不算**。
 
-❌ 这样会被整体拒绝：
+❌ 会被整体拒绝（等同于"什么也没说"）：
 
 ```json
 "targets": [ { "part": "nipple", "rotateDirection": "clockwise", "durationMs": 500 } ]
 ```
 
-### 3.3 数值边界（超范围与非法值）
+### 3.3 数值非法或超范围时的行为
 
 | 情况 | 行为 |
 | --- | --- |
-| 数值超出 0–100 | **夹取**到 0–100（不报错） |
-| 显式 `null` / 字符串 / `NaN` / 布尔 | **整体拒绝**（不猜你的意图） |
-| `durationMs` 缺失或 ≤ 0（`play`/`update`） | 整体拒绝 |
+| 数值超出 0–100 | **夹取**到边界（不报错） |
+| 显式 `null` / 字符串 / `NaN` / 布尔值 | **整体拒绝**（不猜你的意图） |
+| `play`/`update` 缺 `durationMs` 或 ≤ 0 | 整体拒绝 |
 | `rotateSpeed > 0` 但没给方向 | 整体拒绝 |
-| 一条 target 的驱动指标一个都没有 | 整体拒绝 |
+| 一条 target 一个驱动指标都没有 | 整体拒绝 |
+| `source` / `eventId` 含控制字符（U+0000–U+001F、U+007F） | 整体拒绝 |
+| 一条命令的 `targets` 超过 16 条 | 整体拒绝 |
+| `payload` 字符串超过 16384 字符 | 整体拒绝 |
 
-**"整体拒绝"= 整条命令都不生效**，不会部分应用。
-
----
-
-## 4. ⭐ `part` 用什么名字（最容易静默失效的地方）
-
-### 4.1 规范部位清单
-
-收件端**没有部位白名单**，部件名是否生效完全由**用户的 XToys 配置表**决定。所以：
-
-**你只能发下面这些规范名，并且要先确认用户在 XToys 侧配置了它们。**
-
-```
-mouth  breast  nipple  armpit  clitoris  vulva  vagina
-urethra  anus  butt  penis  prostate
-```
-
-> ⚠️ **一律用全称**：是 `clitoris` 不是 `clit`，是 `anus` 不是 `anal`。
-> Block 名、Channel ID、变量名也沿用同一部位名（如 `Estim-nipple`、`part-estim-nipple`）。
-
-### 4.2 当前接收端实际配置了哪 4 个部位（2026-10-05）
-
-```
-nipple     → E-Stim + 振动 + 旋转（旋转是样板，未接设备）
-clitoris   → E-Stim + 振动
-vagina     → E-Stim + 振动
-anus       → E-Stim + 振动
-```
-
-**发这 4 个之外的部位 → 被静默忽略**（只在日志留一条 `ignored`）。
-设备不会有任何反应，而 HTTP 仍然返回 200。
-
-### 4.3 ❌ 已知会踩的坑：`docs/05` 里的旧键名不能用
-
-`docs/05-game-event-mappings.md` 是**游戏内部状态**的实测记录，里面出现的一些"建议部位键"
-**不是协议名**，直接发会被忽略：
-
-| 游戏映射文档里的旧键 | 问题 | 应该发什么 |
-| --- | --- | --- |
-| `generic_ep` | 不是协议名 | `whole_body` 不在叶子清单里 → 需用户在配置里加，或**改发具体叶子**（如 `nipple`） |
-| `chest` | 不是协议名 | `breast` |
-| `lower` | 不是协议名 | `vagina` 或 `clitoris`（看具体部位） |
-| `abuse` | 不是协议名 | 无对应，需用户在配置里加或改发叶子 |
-| `clit_penis` | 不是协议名 | `clitoris`（或 `penis`） |
-| `futanari` | 不是协议名 | 无对应，需用户决定 |
-| `whole_body` | **虚拟组已废弃**（一个 Block 专属一个部位，组会落到多个部位，语义冲突） | 改发多个具体叶子 target |
-
-> **结论：写插件的第一步是产出一张 游戏内部状态 → 规范部位名 的映射表，并和用户确认
-> 接收端配置了哪些部位。** 不要照 `docs/05` 的"建议部位键"直接发。
-
-### 4.4 部位合法但这个部位没有对应通道时
-
-例：用户只给 `vagina` 配了振动、没有 E-Stim，而你发了 `vagina.estimIntensity`。
-
-→ **该指标被忽略**（日志留痕），**不报错**。这是正常情况（用户没接那类设备）。
-
-**所以：不要期待"没反应就是出错"** —— 先查 XToys 日志里有没有 `ignored`，
-或读 `xthb-ignored-count` / `xthb-last-ignored`。
+> **"整体拒绝" = 整条命令都不生效**，不会部分应用。
+> 接收端的设计原则是：宁可什么都不做，也不做一半让你以为成功了。
 
 ---
 
-## 5. 状态语义（搞错会造成"设备莫名停住/莫名一直动"）
+## 4. ⭐ `part` 该写什么（最容易静默失效的地方）
+
+### 4.1 规范部位名清单
+
+只能用下面这些名字（**都是解剖学全称**）：
+
+```
+mouth    breast   nipple   armpit   clitoris   vulva
+vagina   urethra  anus     butt     penis      prostate
+```
+
+⚠️ **一律用全称**：是 `clitoris` 不是 `clit`，是 `anus` 不是 `anal`。
+
+### 4.2 为什么这可能是"没反应"的头号原因
+
+**接收端没有部位白名单。** 一个部位名是否生效，完全取决于**用户在 XToys 侧配置了哪些部位**。
+
+- 你发了一个**用户没配置**的部位 → **该部位被静默忽略**：
+  设备毫无反应，HTTP 仍然返回 200，你那边看不出任何异常。
+- 你发了一个**配置了但用户没接那类设备**的部位 → 同样忽略
+  （例：该部位只配了振动，你发了 `estimIntensity`）。
+
+**所以写插件的第一步不是写代码，是产出一张表：**
+
+> **游戏内部状态 → 上面 12 个规范部位名**
+
+然后**和用户确认接收端配置了哪些部位、每个部位有哪些通道**。
+
+### 4.3 当前接收端的默认配置（供参考）
+
+默认一份配置里包含 4 个部位：
+
+| 部位 | 可用通道 |
+| --- | --- |
+| `nipple` | E-Stim + 振动 + 旋转（旋转是语法样板，通常未接设备） |
+| `clitoris` | E-Stim + 振动 |
+| `vagina` | E-Stim + 振动 |
+| `anus` | E-Stim + 振动 |
+
+**这 4 个之外的名字会被忽略。** 需要更多部位时，让用户在接收端配置里加
+（加完要重新导入 Script 并在界面上绑定新槽），你这边只需用规范名。
+
+### 4.4 ⚠️ 不要用"虚拟组"或游戏内部键名
+
+有两类名字**看着合理但会被忽略**：
+
+1. **虚拟组**（`genitals`、`whole_body`、`lower_body`、`double_hole` 等）——
+   本协议**不支持**。因为一个输出槽只归属一个部位，"组"会同时落到多个部位，语义冲突。
+   → 要影响多个部位就**发多条 target**。
+2. **某个游戏探针文档里记录的内部键名**（例如 `generic_ep`、`chest`、`lower`、
+   `abuse`、`clit_penis`、`futanari`）—— 那些是**游戏内部状态的记录**，**不是协议名**。
+   → 必须翻译成 §4.1 的规范名（`chest` → `breast`，`lower` → `vagina`/`clitoris` 等）。
+
+### 4.5 怎么判断是不是被忽略了
+
+看 XToys 日志（§8）：
+
+- `ignored 部位 X 未在映射配置里` → **部位名不在用户配置里**，改名字或让用户加配置
+- `ignored X 没有 Y 对应的 Block` → 部位合法，但用户没接那类设备（正常）
+
+---
+
+## 5. 状态语义（搞错会造成"设备莫名停住 / 莫名一直动"）
 
 ### 5.1 有限事件 vs 基线
 
-| | 有限事件（`play`/`update`） | 基线（`set_baseline`） |
+| | 有限事件（`play` / `update`） | 基线（`set_baseline`） |
 | --- | --- | --- |
 | 生命周期 | 有 `durationMs`，**到期自动消失** | 一直持续，直到被新快照替换或 `stop` |
 | 用途 | 一次攻击 / 命中 | 持续状态：拘束、异常状态、发情 |
-| 到期后 | 回落到基线（若有），否则归零 | — |
+| 到期后 | **回落到基线**（若该部位有基线），否则归零 | — |
 
-**典型组合**：拘束阶段用 `set_baseline` 给一个低强度底噪，攻击用 `play` 叠加上去。
+**典型组合**：用 `set_baseline` 给一个持续底噪，攻击用 `play` 叠加在上面。
+到期后自动回到基线 —— 你不需要手动"恢复"。
 
 ### 5.2 ⭐ 基线是**完整快照**，漏写的通道会被清除
 
 `set_baseline` 替换该 `source` 的**整份**快照。**快照里没写的部位会被清除**，
-**而且粒度一直到通道**：某部位只写了 `estimIntensity`、没写 `vibrateIntensity`，
-那么**该部位的振动基线会被清除（振动停止）** —— 不是"保持不变"。
+**而且粒度一直到通道**：
 
-> ✅ 真机实测（2026-10-05）：用 `vibrateIntensity:25` 建立振动基线后，后续只带
-> `estimIntensity` 的 `play` 事件**不影响**它（事件不带 vibrate 值就不参与振动仲裁）；
-> 但只要发一条**新的 `set_baseline`** 而里面没写振动，振动基线就被清掉。
+> 某部位只写了 `estimIntensity`、**没写** `vibrateIntensity`
+> → **该部位的振动基线被清除（振动停止）**。
 
-**所以：发持续状态时，必须把该部位所有需要持续的通道一起写进同一条快照。**
+这**不是**"保持不变"，是"你没提，所以取消"。
+
+✅ 正确做法 —— 发持续状态时，**把该部位所有需要持续的通道都写进同一条快照**：
 
 ```json
-{
-  "protocolVersion": 1, "command": "set_baseline", "source": "repetition", "sequence": 7,
-  "targets": [
-    { "part": "nipple", "estimIntensity": 20, "vibrateIntensity": 20, "frequency": 30 }
-  ]
-}
+"targets": [
+  { "part": "nipple", "estimIntensity": 20, "vibrateIntensity": 20, "frequency": 30 }
+]
 ```
 
-清空该来源基线（空快照，不影响有限事件）：
+> 对比：`play`/`update`（有限事件）**不**影响基线。一个只带 `estimIntensity` 的命中事件
+> 不会碰该部位的振动基线。
+
+清空该来源的全部基线（不影响有限事件）：
 
 ```json
-{ "protocolVersion": 1, "command": "set_baseline", "source": "repetition", "sequence": 8, "targets": [] }
+{ "protocolVersion": 1, "command": "set_baseline", "source": "my-game",
+  "sequence": 8, "targets": [] }
 ```
 
 ### 5.3 `frequency` 缺省 ≠ 0
 
-**不给 `frequency` = 保持设备当前频率**，不是置零。因为频率是 E-Stim 的**调制设置**而非
-刺激量，"强度 0 时把频率写 0"没有意义，只会改变下一次输出的手感。
+**不给 `frequency` = 保持设备当前频率**，不是置零。
 
-- 要改频率：显式给 `frequency`
-- 不想动频率：**别写这个字段**（不要写 `"frequency": 0`，那会被当成"要求频率 0"）
+原因：频率是 E-Stim 的**调制设置**，不是刺激量。"强度 0 时把频率写 0"没有意义，
+只会改变下一次输出的手感。
 
-> ✅ 真机实测：`frequency` 是**百分比（0–100）**，映射到设备自身范围。
-> XToys 默认频率范围 **10–100**，所以 `frequency: 30` 在设备上落在 `10 + 30%×90 ≈ 37`。
-> **读数与发送值不一致是正常的。** 写 `0` 会落在下限 10（最低频），不代表关闭。
+| 你想做的 | 怎么写 |
+| --- | --- |
+| 改频率 | 显式给 `frequency` |
+| **不要动频率** | **根本不写这个字段**（不要写 `"frequency": 0`） |
+| 把频率设为最低 | 显式 `frequency: 0` |
+
+⚠️ **`frequency` 是百分比（0–100），不是绝对频率。** 它映射到设备自身的频率范围。
+例如 XToys 默认频率范围是 **10–100**，那么 `frequency: 30` 在设备上落在
+`10 + 30% × 90 ≈ 37` —— **读数与发送值不一致是正常的**，不是偏差。
+`frequency: 0` 会落在范围下限 10（最低频），**不代表"关闭频率"**。
 
 ### 5.4 `sequence` 必须严格递增（否则命令被静默丢弃）
 
-同一 `source + eventId` 只有**严格更大的 `sequence`** 才生效：
+同一 `source + eventId`，只有**严格更大的 `sequence`** 才生效。相同或更小的会被拒绝
+（`invalid_sequence`）—— 这是为了防止"重复投递变成重复刺激"。
+
+简单做法：每个 `eventId` 自己维护一个递增计数。
 
 ```js
-// 每个事件自己维护一个递增计数
 const seq = (seqMap[eventId] = (seqMap[eventId] || 0) + 1);
 ```
 
-- 用**相同或更小**的 `sequence` 会被拒（`invalid_sequence`）—— 这是防止重复投递变成重复刺激。
-- **事件到期后，它的序号栅栏还会保留 10 分钟**（防止 webhook 重试造成重复刺激）。
-  所以同一个 `eventId` **不要"重置"回小序号**，让它一直递增。
-- 想换新事件，直接换 `eventId`（各自独立计数）。
+- 想开始一个"新事件"，**换一个 `eventId`**（各自独立计数）。
+- **不要把同一个 `eventId` 的计数重置回小值。**
+- 事件到期后，它的序号栅栏**还会保留 10 分钟**（继续挡重复投递），
+  所以重开同一个 `eventId` 也必须用更大的序号。
 
-### 5.5 ⚠️ 基线序号也有栅栏，且**跨 `stop_all` 保留**
+### 5.5 ⚠️ 基线序号也有栅栏，而且**跨 `stop_all` 保留**
 
-- `set_baseline` 的 `sequence` 也必须比该 `source` 上一次的**严格更大**。
-- **`stop_all` 会清状态，但不清这个栅栏** —— 之后同一 `source` 的 `set_baseline`
-  **仍必须用更大的序号**。
+`set_baseline` 的 `sequence` 同样必须比该 `source` 上一次的**严格更大**。
 
-**所以插件必须持久化"我已经用到第几号"**，否则战斗结束（`stop_all`）后再开一场，
-用回小序号会被拒，表现为"基线发不出去"。
+**`stop_all` 会清掉所有状态，但不会清这个栅栏** —— 之后同一 `source` 的
+`set_baseline` **仍然必须用更大的序号**。
 
-- 简单做法：`source` 里带**会话标识**（如 `"repetition-s3"`），重开就换 source。
-- 或者：把序号存进存档/配置，重启后继续递增。
+**所以你的插件必须持久化"我已经用到第几号"。** 否则：战斗结束发了 `stop_all`，
+再开一场时用回小序号 → **基线发不出去**（被静默拒绝），表现是"状态怎么都不生效"。
 
-### 5.6 旋转不会自动反向
+两种做法：
 
-要换向必须**显式发新的 `rotateDirection`**（用 `update` 带更高 `sequence`）。
-只发速度不会反向。
+| 做法 | 说明 |
+| --- | --- |
+| `source` 带会话标识 | 如 `"my-game-s3"`，每次重开游戏换一个 `source`。简单，推荐 |
+| 持久化序号 | 把序号存进存档或配置文件，重启后继续递增 |
+
+### 5.6 `priority`：让"数值更小但更重要"的事件生效
+
+竞争**只发生在同一个部位内部**（不同部位永不互相影响）。判定顺序：
+
+1. **`priority` 大者胜**（这里的字段）
+2. 相同则**数值大者**胜
+3. 再相同则**序号大者**胜
+
+**为什么需要它**：数值是有体感含义的。如果只靠"把数值抬高"来抢输出，
+那会真的改变设备强度、污染手感。用 `priority` 可以表达"这个更重要"，而不动数值。
+
+典型用法：高潮事件 `priority: 10`，即使它的强度数值比当前基线**更小**，
+也能盖过基线。
+
+默认 `0`，不需要就完全不写。
+
+### 5.7 旋转不会自动反向
+
+要换方向必须**显式发新的 `rotateDirection`**（用 `update` 带更高 `sequence`）。
+只改速度不会反向。
 
 ---
 
 ## 6. 代码骨架（可直接改用）
 
-### 6.1 通用发送器（JavaScript / RPG Maker 插件可直接用）
+### 6.1 JavaScript（RPG Maker 插件、网页环境可直接用）
 
 ```js
-// ── 配置（真实 Webhook ID 不要提交进版本库）──
-var WEBHOOK_ID = '';              // 运行时由用户填
-var SOURCE     = 'my-game';       // 稳定标识
+// ── 配置 ──
+// ⚠️ 真实 Webhook ID 不要硬编码进提交的文件，让用户填
+var WEBHOOK_ID = '';
+var SOURCE     = 'my-game';       // 稳定标识；重开一局可换成 'my-game-s2' 等
 
-// 基线序号栅栏：必须持久化，跨 stop_all 保留
+// 基线序号：必须持久化（跨 stop_all 保留），见 §5.5
 var baselineSeq = 0;
 // 每个 eventId 自己的序号
 var eventSeq = {};
@@ -354,54 +436,89 @@ var eventSeq = {};
 function postCommand(inner) {
   var body = JSON.stringify({
     action: 'xtoys_game_bridge',
-    payload: JSON.stringify(inner)      // ← 内层必须是【字符串】
+    payload: JSON.stringify(inner)        // ← 内层必须是【字符串】
   });
   var xhr = new XMLHttpRequest();
   xhr.open('POST', 'https://webhook.xtoys.app/' + WEBHOOK_ID, true);
   xhr.setRequestHeader('Content-Type', 'application/json');
   xhr.send(body);
-  // ⚠️ 不要用返回值判断成功 —— HTTP 200 不代表命令被接受
+  // ⚠️ 不要用返回值判断是否生效：HTTP 200 也可能被拒绝，见 §1.1
 }
 
 // 有限事件（一次命中）
-function sendHit(part, estim, vibrate, durationMs, opts) {
+function sendHit(part, opts) {
   opts = opts || {};
   var eid = opts.eventId || (part + '-' + Date.now());
   eventSeq[eid] = (eventSeq[eid] || 0) + 1;
-  var t = { part: part, durationMs: durationMs,
-            rampUpMs: opts.rampUpMs || 0, rampDownMs: opts.rampDownMs || 0 };
-  if (estim   != null) t.estimIntensity   = estim;
-  if (vibrate != null) t.vibrateIntensity = vibrate;
-  if (opts.frequency != null) t.frequency = opts.frequency;   // 不给就保持当前频率
+
+  var t = {
+    part: part,
+    durationMs: opts.durationMs || 900,
+    rampUpMs:   opts.rampUpMs   || 0,
+    rampDownMs: opts.rampDownMs || 0
+  };
+  // 只写你真正想驱动的通道（不写 = 不驱动那条通道）
+  if (opts.estim   != null) t.estimIntensity   = opts.estim;
+  if (opts.vibrate != null) t.vibrateIntensity = opts.vibrate;
+  if (opts.rotateSpeed != null) {
+    t.rotateSpeed = opts.rotateSpeed;
+    t.rotateDirection = opts.rotateDirection || 'clockwise';  // >0 时必填
+  }
+  // frequency：想改才写；不写 = 保持设备当前频率
+  if (opts.frequency != null) t.frequency = opts.frequency;
   if (opts.priority  != null) t.priority  = opts.priority;
 
-  postCommand({ protocolVersion: 1, command: 'play', source: SOURCE,
-                eventId: eid, sequence: eventSeq[eid], targets: [t] });
+  postCommand({
+    protocolVersion: 1, command: 'play', source: SOURCE,
+    eventId: eid, sequence: eventSeq[eid], targets: [t]
+  });
 }
 
-// 持续状态（基线快照）—— 该部位【所有】需要持续的通道都要写进来
+// 持续状态（基线快照）
+// ⚠️ targets 必须包含该部位【所有】需要持续的通道，漏写的会被清除
 function setBaseline(targets) {
-  baselineSeq += 1;                 // 必须严格递增，且要持久化
-  postCommand({ protocolVersion: 1, command: 'set_baseline', source: SOURCE,
-                sequence: baselineSeq, targets: targets });
+  baselineSeq += 1;
+  postCommand({
+    protocolVersion: 1, command: 'set_baseline', source: SOURCE,
+    sequence: baselineSeq, targets: targets
+  });
 }
 
-// 紧急全停
+// 清空基线
+function clearBaseline() { setBaseline([]); }
+
+// 提前结束某个事件
+function stopEvent(eventId) {
+  postCommand({ protocolVersion: 1, command: 'stop', source: SOURCE, eventId: eventId });
+}
+
+// 紧急全停：战斗结束 / 退出游戏时一定要发
 function stopAll() {
   postCommand({ protocolVersion: 1, command: 'stop_all', source: SOURCE });
 }
+
+// ── 用法示例 ──
+// 拘束阶段：持续低强度底噪（两条通道都写，避免被当成"取消"）
+setBaseline([{ part: 'nipple', estimIntensity: 15, vibrateIntensity: 15, frequency: 30 }]);
+// 一次命中：叠加，到期自动回落到基线
+sendHit('nipple', { estim: 60, frequency: 40, durationMs: 900, rampUpMs: 120, rampDownMs: 180 });
+// 高潮：数值更小但更重要
+sendHit('nipple', { estim: 15, durationMs: 3000, priority: 10 });
+// 战斗结束
+stopAll();
 ```
 
 ### 6.2 C#（BepInEx 插件）要点
 
 - 用 `HttpClient` + `StringContent(json, Encoding.UTF8, "application/json")`
-- **不要**在游戏主线程同步等待响应 —— 用 fire-and-forget 或后台任务
-- 批量窗口用主循环 tick 或定时器驱动
+- **不要在游戏主线程同步等待响应**（而且响应也没有信息量，见 §1.1）；
+  用 fire-and-forget 或后台任务
+- 序号与基线序号要持久化（§5.4 / §5.5）
 
-### 6.3 Lua（UE4SS Mod）要点
+### 6.3 Lua（UE4SS 等）要点
 
-- 确认 mod 环境有 HTTP 能力；没有就写文件由外部程序转发
-- **不要读会崩原生代码的字段**（见 `docs/05` §4.4）
+- 先确认 mod 环境有 HTTP 能力；没有就写文件、由外部程序转发
+- 序号管理同样要持久化
 
 ---
 
@@ -413,20 +530,21 @@ function stopAll() {
 [ ] play/update 都带 eventId、sequence（严格递增）、正的 durationMs
 [ ] 一个 targets 数组里没有重复的 part（同部位指标已合并成一条）
 [ ] 强度字段用的是 estimIntensity / vibrateIntensity，没有旧的 intensity
-[ ] part 用的都是规范全称（clitoris 不是 clit），且已在用户配置里存在
-[ ] play/update 覆盖或 stop（提前结束）都有地方触发；战斗结束/退出会发 stop_all
-[ ] 基线序号已持久化（或 source 带会话标识），跨 stop_all 不会用回小序号
-[ ] 同一 eventId 的 sequence 单调递增，不会重置
+[ ] part 用的都是 §4.1 的规范全称（clitoris 不是 clit），且已和用户确认配置里有
+[ ] 没有使用虚拟组（genitals / whole_body 等）或游戏内部键名
+[ ] set_baseline 的快照里写全了该部位【所有】需要持续的通道
 [ ] 不给 frequency 时【根本不写】这个字段（不是写 0）
-[ ] 代码里没有设备名/通道名/Job 名/Block 名
+[ ] 同一 eventId 的 sequence 单调递增，不会重置
+[ ] 基线序号已持久化（或 source 带会话标识），跨 stop_all 不会用回小序号
+[ ] 战斗结束 / 退出游戏 / 玩家急停 都会发 stop_all
+[ ] 代码里没有设备名 / 通道名 / 输出槽名
 [ ] 真实 Webhook ID 没有硬编码进提交的文件
 [ ] 体感相关逻辑（去抖 / 批量 / 优先级策略）已在真机上按本游戏的实际节奏定过
 ```
 
-> 最后一条是**留给你的判断**，本文档不规定具体做法。协议本身对发送频率没有要求
-> （接收端是 100 ms 定时取最新意图，密集事件天然会被合并），但**发得多不等于体感好**：
+> 最后一条是**留给你的判断**，本指南不规定具体做法。接收端是 100 ms 定时取最新意图，
+> **密集事件天然会被合并**，协议对发送频率没有要求。但"发得多"不等于"体感好"：
 > 冷却、批量窗口、高潮去重这类策略完全取决于游戏的事件密度与节奏，必须按实际游戏定。
-> `docs/05` 里记录了旧实现在两个具体游戏上**观察到的**参数，只作参考，不要照搬。
 
 ---
 
@@ -435,74 +553,82 @@ function stopAll() {
 ### 8.1 先用 `test` 命令验格式（不驱动硬件）
 
 ```json
-{ "protocolVersion": 1, "command": "test", "source": "my-game",
-  "targets": [ { "part": "nipple", "estimIntensity": 50 } ] }
+{
+  "protocolVersion": 1, "command": "test", "source": "my-game",
+  "targets": [ { "part": "nipple", "estimIntensity": 50 } ]
+}
 ```
 
-返回 `{"ok":true,"code":"validated"}` 说明格式没问题。
-（`test` 不需要 `sequence`。）
+格式正确时接收端返回 `{"ok":true,"code":"validated"}`，且**不会驱动任何设备**。
 
-### 8.2 出问题时**只能看 XToys 日志**
+### 8.2 出问题时只能看 XToys 的 Script 日志
 
-HTTP 永远 200，所以：
+HTTP 永远返回 200，所以判断只能靠日志：
 
-| 日志/变量 | 含义 |
+| 日志内容 | 含义 |
 | --- | --- |
-| `收到 command=… source=… parts=…` | 命令到了，格式被解析 |
-| `rejected <code>` | 被拒绝，`code` 见下 |
-| `ignored 部位 X 未在映射配置里` | **部位名不在用户配置里** → 改部位名，或让用户在 XToys 侧加 |
-| `ignored X 没有 Y 对应的 Block` | 部位合法，但用户没接那类设备 → 正常 |
-| `xthb-ignored-count` | 被忽略的累计计数 |
-| `xthb-last-error` / `xthb-rejected-count` | 最近一次错误 / 拒绝计数 |
+| `收到 command=… source=… seq=… targets=… parts=…` | 命令到达且格式被解析 |
+| `rejected <code>` | 命令被拒绝，`code` 见下表 |
+| `ignored 部位 X 未在映射配置里` | **部位名不在用户配置里** → 改名字，或让用户在接收端加 |
+| `ignored X 没有 Y 对应的 Block` | 部位合法但用户没接那类设备（正常） |
 
-常见 `code`：
+日志里也可以读这些诊断变量：`xthb-ignored-count`（被忽略计数）、
+`xthb-rejected-count`（被拒绝计数）、`xthb-last-error`、`xthb-last-ignored`。
+
+### 8.3 错误码对照表
 
 | code | 原因 |
 | --- | --- |
-| `invalid_payload` | 外层 `action` 不对，或 `payload` 不是字符串 |
-| `invalid_json` | JSON 解析失败 |
-| `unsupported_protocol_version` | `protocolVersion` 不是 1 |
-| `unsupported_command` | `command` 拼错 |
-| `missing_source` / `missing_event_id` | 缺字段，或含控制字符 |
-| `invalid_sequence` | 序号没严格递增（**最常见**） |
-| `invalid_duration` | `durationMs` 缺失或非正 |
-| `invalid_targets` | 重复部位 / 未知字段值 / 驱动指标一个都没有 |
-| `missing_targets` | 缺 `targets`，或 `play`/`update` 给了空数组 |
-| `missing_stop_selector` | `stop` 没给选择器 |
+| `invalid_payload` | 外层 `action` 不是 `xtoys_game_bridge`；或 `payload` 不是字符串；或载荷超长 |
+| `invalid_json` | JSON 解析失败（外层或 `payload`） |
+| `unsupported_protocol_version` | `protocolVersion` 不是 `1` |
+| `unsupported_command` | `command` 拼错或不存在 |
+| `missing_source` | 缺 `source`，或为空、超 64 字符、含控制字符 |
+| `missing_event_id` | 缺 `eventId`，或为空、超 64 字符、含控制字符 |
+| `invalid_sequence` | 序号非有限数、为负，或**没有严格大于上次**（最常见） |
+| `invalid_duration` | `play`/`update` 的 `durationMs` 缺失或非正 |
+| `invalid_targets` | 同部位重复；`part` 不是字符串；数值非法；驱动指标一个都没有 |
+| `missing_targets` | 缺 `targets`；或 `play`/`update` 给了空数组 |
+| `missing_stop_selector` | `stop` 既没给 `eventId` 也没给有效的 `targets` |
+| `invalid_config` | **接收端没初始化成功**（不是你的问题，让用户重启 Script） |
+| `state_capacity_exceeded` | 同时有效的有限事件超过 64 个（说明事件没有正常到期/停止） |
 
-### 8.3 接收端已经验过什么（你不必重验）
+### 8.4 接收端已经验证过的行为（你不必重验）
 
-真机 14 步已通过（除旋转，用户暂无设备）。其中与你直接相关的：
-
-- `frequency` 缺省保持不变 ✅
-- `priority` 作为第一级判据 ✅
-- 序号不递增被拒绝 ✅
-- 未识别部位被忽略而不是整体拒绝 ✅
-- 重复部位被拒绝 ✅
-- `stop_all` 归零 ✅
-- 同强度新事件会重新驱动 ✅
+以下都已在真机上验证：`frequency` 缺省保持不变；`priority` 作为第一级判据生效；
+序号不递增被拒绝；未识别部位被忽略而不是整体拒绝；同部位重复被拒绝；
+`stop_all` 全通道归零；同强度新事件会重新驱动；强度两条通道互不牵连。
 
 ---
 
 ## 9. 一页速记
 
 ```
-POST https://webhook.xtoys.app/<ID>
+POST https://webhook.xtoys.app/<Webhook ID>
 {"action":"xtoys_game_bridge","payload":"<内层JSON字符串>"}
 
 内层：{protocolVersion:1, command, source, eventId, sequence, targets:[...]}
-  play/update  → 有限事件（要 durationMs>0，eventId+递增 sequence）
+  play/update  → 有限事件（要 durationMs>0，eventId + 递增 sequence，targets 非空）
   set_baseline → 持续状态（完整快照！漏写的通道会被清除；序号跨 stop_all 保留）
-  stop         → 提前结束
+  stop         → 提前结束（给 eventId 或 targets）
   stop_all     → 紧急全停
+  test         → 只校验不驱动（不需要 sequence）
 
-target: {part, estimIntensity?, vibrateIntensity?, frequency?,
-         rotateSpeed?, rotateDirection?, durationMs?, rampUpMs?, rampDownMs?, priority?}
+target: {part, estimIntensity?, vibrateIntensity?, frequency?, rotateSpeed?,
+         rotateDirection?, durationMs?, rampUpMs?, rampDownMs?, priority?}
+
+part 只能用这 12 个全称：
+  mouth breast nipple armpit clitoris vulva vagina urethra anus butt penis prostate
+  （用户没配置这个部位 → 静默忽略，HTTP 还是 200）
 
 三条最容易错：
-  1. 一个部位在 targets 里只能出现一次（指标合并成一条）
-  2. estimIntensity / vibrateIntensity 是独立通道，互不推导；别用旧的 intensity
-  3. part 必须是规范全称且在用户配置里；否则【静默忽略】，HTTP 还是 200
+  1. 一个部位在 targets 里只能出现一次（同部位的指标合并成一条）
+  2. estimIntensity / vibrateIntensity 是独立通道，互不推导；没有 intensity 字段
+  3. part 必须用规范全称且在用户配置里；否则【静默忽略】
+
+两条反直觉但很重要：
+  · set_baseline 是完整快照 —— 漏写某条通道 = 清掉那条通道的基线
+  · frequency 不写 = 保持设备当前频率（不是 0；写 0 是"最低频"）
 
 记住：HTTP 200 ≠ 生效。只信 XToys 日志。
 ```

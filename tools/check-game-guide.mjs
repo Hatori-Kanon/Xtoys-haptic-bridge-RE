@@ -215,12 +215,14 @@ check("生成物内联配置 = nipple/clitoris/vagina/anus（与文档 §4.2 一
   JSON.stringify(configuredParts) === JSON.stringify(["anus", "clitoris", "nipple", "vagina"]),
   configuredParts.join(","));
 
-/* 文档 §4.1 的规范清单 */
-const listStart = guide.indexOf("### 4.1 规范部位清单");
-const blockStart = guide.indexOf("```", listStart);
-const blockEnd = guide.indexOf("```", blockStart + 3);
-const listedParts = guide.slice(blockStart + 3, blockEnd).split(/\s+/).filter(Boolean);
-check("§4.1 清单含 12 个规范部位（与 webhook-protocol 一致）",
+/* 规范部位清单：用【结构标记】定位，不靠标题文字（标题会被编辑改动）。
+ * 文档里该清单是紧跟 "### 4.1" 之后的第一个代码块。 */
+const partSectionStart = guide.indexOf("### 4.1");
+check("能找到 §4.1 小节", partSectionStart >= 0);
+const partBlockStart = guide.indexOf("```", partSectionStart);
+const partBlockEnd = guide.indexOf("```", partBlockStart + 3);
+const listedParts = guide.slice(partBlockStart + 3, partBlockEnd).split(/\s+/).filter(Boolean);
+check("§4.1 规范清单含 12 个部位（与协议一致）",
   listedParts.length === 12, `实际 ${listedParts.length}: ${listedParts.join(",")}`);
 check("§4.1 清单用全称 clitoris/anus，不含 clit/anal",
   listedParts.includes("clitoris") && listedParts.includes("anus") &&
@@ -234,7 +236,7 @@ check("§4.3 警告 docs/05 的旧键名会静默失效",
 
 console.log("\nE. 文档必须覆盖的要点（防止改协议时漏同步文档）");
 const REQUIRED_TOPICS = [
-  ["HTTP 200 不代表生效", (g) => g.includes("HTTP 200") && g.includes("≠")],
+  ["HTTP 200 不代表生效", (g) => g.includes("HTTP 200") && g.includes("不代表")],
   ["payload 必须是 JSON 字符串", (g) => g.includes("JSON 字符串")],
   ["六个命令都提到", (g) => ["play", "update", "stop", "set_baseline", "stop_all", "test"]
     .every((c) => g.includes(`\`${c}\``))],
@@ -245,10 +247,44 @@ const REQUIRED_TOPICS = [
   ["rotation 不会自动反向", (g) => g.includes("不会自动反向")],
   ["交付核对清单", (g) => g.includes("交付前必须核对的清单")],
   ["错误码表", (g) => g.includes("invalid_sequence") && g.includes("invalid_targets")],
-  ["不出现设备名/通道名/Job 名的硬边界", (g) => g.includes("不得出现设备名")],
+  ["说明接收端如何工作（逻辑部位 → 输出槽，用户绑定设备）",
+    (g) => g.includes("逻辑部位") && g.includes("绑定") && g.includes("输出槽")],
+  ["硬边界：代码里不得出现设备名/通道名", (g) => g.includes("不得出现设备名")],
+  ["priority 的作用与判定顺序", (g) => g.includes("priority") && g.includes("大者胜")],
+  ["旋转换向要显式发方向", (g) => g.includes("rotateDirection")],
+  ["给出可直接改用的代码骨架", (g) => g.includes("postCommand") && g.includes("setBaseline")],
+  ["12 个规范部位全称", (g) => g.includes("urethra") && g.includes("prostate")],
+  ["虚拟组不支持（要发多条 target）", (g) => g.includes("虚拟组") && g.includes("多条 target")],
 ];
+
+/* 本文档必须【自包含】：不得要求读者去翻本项目的其它文档。
+ * 允许出现的是"接收端在 XToys 侧接收"这类描述，不允许出现 docs/NN 这类路径依赖。 */
+console.log("\nE2. 文档必须自包含（不得依赖本项目其它文档）");
+const INTERNAL_DOC_REFS = [...guide.matchAll(/docs\/\d\d-[a-z-]+\.md|HANDOFF\.md|docs\/0\d/g)].map((m) => m[0]);
+check("不引用 docs/NN-*.md 或 HANDOFF.md", INTERNAL_DOC_REFS.length === 0,
+  `发现引用：${[...new Set(INTERNAL_DOC_REFS)].join(", ")}`);
+check('不写「以其它文档为准」', !guide.includes("以那两份为准") && !guide.includes("权威规格在"));
 for (const [label, predicate] of REQUIRED_TOPICS) {
   check(label, predicate(guide));
+}
+
+/* G. 文档内联的【数值限制与上限】必须与运行时常量一致。
+ * 这些边界如果不符，照文档写同样会被拒 —— 与错误码一样属于硬契约。 */
+console.log("\nG. 文档内联的数值限制必须与运行时一致");
+const LIMITS = [
+  ["targets 上限 16", /超过 16 条/, "XTHB_MAX_TARGETS = 16"],
+  ["id 上限 64 字符", /≤\s*64\s*字符|64 字符/, "XTHB_MAX_ID_CHARS = 64"],
+  ["时长上限 600000 ms", /≤\s*600000|600000\s*ms/, "XTHB_MAX_DURATION_MS = 600000"],
+  ["同时有效事件上限 64", /超过\s*64\s*个/, "XTHB_MAX_EVENTS = 64"],
+  ["payload 上限 16384 字符", /16384/, "XTHB_MAX_PAYLOAD_CHARS = 16384"],
+];
+for (const [label, re, constDecl] of LIMITS) {
+  check(`${label}：文档写了`, re.test(guide));
+  check(`${label}：运行时常量一致`, runtime.includes(constDecl), constDecl);
+}
+/* 文档里出现的具体数值也必须在运行时里存在，避免写错数字 */
+for (const n of ["600000", "64", "100"]) {
+  check(`数值 ${n} 在运行时里存在`, runtime.includes(n));
 }
 
 /* F. 本文档【不规定】体感逻辑（2026-10-05 用户决定）
