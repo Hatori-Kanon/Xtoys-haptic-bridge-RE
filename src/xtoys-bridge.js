@@ -1605,6 +1605,23 @@ function xthbDescribeCommand(inner) {
 }
 
 /*
+ * 诊断探针：故意抛出一个未被捕获的异常。
+ *
+ * 唯一用途是验证【Final Actions 的时序防御到底有没有实际价值】：
+ * docs/01 §7 声称"JS 抛错时 Final Actions 是唯一的硬件停止保障"，所以生成器把
+ * 字面量归零排在了 customCode 之前。但"XToys 在某个 Action 抛错后是否还继续执行
+ * 后续 Action"无法本地验证 —— 只能真机试。
+ *
+ * 触发方式：事件身份（source + eventId）以 "__XTHB_THROW_TEST__" 结尾。
+ * 这条路径【刻意不经过 safeCall】，所以异常会真的抛出去 —— 那正是要测的状态。
+ */
+var XTHB_THROW_TEST_SUFFIX = "__XTHB_THROW_TEST__";
+
+function xtoysBridgeThrowForTest() {
+  throw new Error("XTHB deliberate throw for Final Actions timing test");
+}
+
+/*
  * 全局 Trigger 入口。
  * 参数是 Trigger 注入的载荷，真机上可能是【外层封装】也可能已经是【内层载荷】；
  * 两种形状都必须能处理（docs/02 §1 的封装仍要支持，因为手工 curl 测试就是那个形状）。
@@ -1654,6 +1671,17 @@ function xtoysBridgeHandle(payload) {
     return xthbFail("invalid_payload", "内层不是对象");
   }
   xthbLog("收到 " + xthbDescribeCommand(inner));
+
+  /*
+   * 诊断探针：身份以 __XTHB_THROW_TEST__ 结尾时故意抛错。
+   * 用于真机验证"Final Actions 在 JS 抛错后是否仍能归零"——
+   * 这条路径刻意不返回结果，让异常真的冲出 JS 边界。
+   */
+  if (xthbHasOwn(inner, "eventId") && xthbIsNonEmptyString(inner.eventId) &&
+    inner.eventId.indexOf(XTHB_THROW_TEST_SUFFIX) >= 0) {
+    xthbLog("【诊断】按请求故意抛错（验证 Final Actions 时序）");
+    xtoysBridgeThrowForTest();
+  }
 
   parsed = xthbParseCommand(inner);
   if (parsed.error) {

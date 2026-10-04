@@ -215,6 +215,25 @@ $stepDefs += @{
   Inner = (Inner -Command 'stop_all' -OmitSequence)
 }
 
+# ---- 步骤 15：专测 Final Actions 的安全性时序（需要人工停 Script）----
+$stepDefs += @{
+  Id = 15; Title = 'JS 抛错后手动停 Script，硬件是否仍然归零（Final Actions 时序）'; NeedsRotator = $false
+  Expect = @(
+    '本步分两段：脚本先建立非零输出，再故意让 customCode 抛一个未捕获的异常。'
+    '抛错后脚本可能已经失效 —— 这正是要测的状态。'
+    '看到提示后请【手动在 XToys 里停止 Script】，然后观察设备是否归零。'
+    '若设备【不归零】：说明 XToys 在某个 Action 抛错后会中止后续 Final Action ——'
+    '那么我们"字面量归零排在 customCode 之前"的顺序就是【必需的】，否则会漏掉归零。'
+    '若设备归零：说明该顺序是有效保险（更稳，但没有它也能过）。'
+  ) -join ' '
+  # 先建立非零输出（两个通道都给，确保能看到归零）。
+  Inner = (Inner -Command 'set_baseline' -Sequence 9 -Targets @(
+      @{ part = 'nipple'; estimIntensity = 20; vibrateIntensity = 20 }))
+  # 再由 customCode 主动抛错：走 safeCall 之外的路径才会真正抛出。
+  ThrowAfterMs = 800
+  ManualStopRequired = $true
+}
+
 # ---------------------------------------------------------------- 列表模式
 
 if ($List) {
@@ -340,6 +359,35 @@ foreach ($d in $selected) {
   if ($d.Id -eq 3) {
     Write-Host '  等待 1.2 秒观察是否回落到基线…' -ForegroundColor DarkGray
     Start-Sleep -Milliseconds 1200
+  }
+
+  # 步骤 15：故意触发一个未捕获的 JS 异常，然后请用户手动停 Script。
+  if ($d.ContainsKey('ThrowAfterMs')) {
+    Write-Host ''
+    Write-Host '  现在故意让 customCode 抛一个未捕获的异常…' -ForegroundColor Yellow
+    Start-Sleep -Milliseconds $d.ThrowAfterMs
+    $throwInner = @{
+      protocolVersion = 1
+      command         = 'play'
+      source          = $source
+      eventId         = 'acc-throw__XTHB_THROW_TEST__'
+      sequence        = 1
+      targets         = @(@{ part = 'nipple'; estimIntensity = 20; durationMs = 60000 })
+    }
+    $throwPayload = New-Payload -Inner $throwInner
+    Write-Host "  触发载荷：$throwPayload" -ForegroundColor DarkGray
+    try {
+      $r3 = Invoke-WebRequest -Uri $uri -Method POST -ContentType 'application/json' -Body $throwPayload -TimeoutSec 20
+      Write-Host ("  已发送：HTTP {0}（异常发生在 XToys 内部，HTTP 仍会是 200）" -f $r3.StatusCode) -ForegroundColor DarkGray
+    } catch {
+      Write-Host ("  触发请求失败：{0}" -f $_.Exception.Message) -ForegroundColor Red
+    }
+    Start-Sleep -Milliseconds 1200
+    Write-Host ''
+    Write-Host '  ============================================================' -ForegroundColor Cyan
+    Write-Host '  请现在【手动在 XToys 里停止 Script】，然后观察设备。' -ForegroundColor Cyan
+    Write-Host '  ============================================================' -ForegroundColor Cyan
+    Read-Host '  停完并按回车继续' | Out-Null
   }
 
   Write-Host ''
