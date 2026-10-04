@@ -318,7 +318,7 @@ for (const [re, label] of FORBIDDEN_PRESCRIPTIONS) {
   check(`未${label}`, !re.test(guide));
 }
 check("明确说明体感逻辑由游戏侧自行判断",
-  guide.includes("留给你的判断") && guide.includes("按实际游戏定"));
+  guide.includes("留给你的判断") && guide.includes("由游戏侧自行判断"));
 
 /* H. 跨文档一致性：三份文档对"部位名"的描述必须一致（可扩展 + 同一套命名规范）
  * 否则游戏侧指南说"可扩展"、接口文档说"只有这 12 个"，读者无所适从。 */
@@ -337,6 +337,37 @@ for (const [label, doc] of [["docs/02 接口文档", protocolDoc], ["docs/03 映
 check("三份文档都不把部位清单写成封闭清单",
   [/只能用这\s*\d+\s*个/, /仅限于这\s*\d+\s*个/].every((re) =>
     !re.test(guide) && !re.test(protocolDoc) && !re.test(mappingDoc)));
+
+/* I. 五个"容易被写含糊/写错"的点必须写清楚（2026-10-05 评审提出的问题） */
+console.log("\nI. 关键易错点必须写清楚");
+check("A：明确写出只有 test 不需要 eventId/sequence",
+  guide.includes("只有 `test` 不需要 `eventId`"));
+check("A：核对清单里不再要求所有命令都带 eventId",
+  !/每条命令都带 eventId/.test(guide));
+check("B：明确接收端返回值不会传给游戏侧",
+  guide.includes("不会通过 Webhook 响应传回") || guide.includes("不会传给游戏侧"));
+check("B：明确不得用响应做重试/状态机决策",
+  guide.includes("响应体") && (guide.includes("不要") || guide.includes("不得")));
+check("C：明确区分「接收端合并」与「POST 请求成本」",
+  guide.includes("不减少") && guide.includes("POST"));
+check("C：声明没有实测速率上限（不编造数值）",
+  guide.includes("没有实测的速率上限"));
+check("D：给出「全身/泛用」事件的扇出做法",
+  guide.includes("扇出") && guide.includes("发多条 target"));
+check("D：说明扇出到哪些部位由游戏侧决定",
+  guide.includes("翻译决定") || guide.includes("游戏侧的职责"));
+check("E：给出切换顺序与回退方案",
+  guide.includes("切换时机") && guide.includes("回退"));
+check("E：说明新旧协议不兼容、无并行期",
+  guide.includes("完全不兼容") && guide.includes("唯一可用组合"));
+
+/* 运行时的确证：test 只强制 source + targets */
+const testNoEvt = send({
+  protocolVersion: 1, command: "test", source: "spec-noevt",
+  targets: [{ part: "nipple", estimIntensity: 10 }],
+});
+check("运行时确证：test 不带 eventId/sequence 被接受",
+  testNoEvt.ok === true && testNoEvt.code === "validated", JSON.stringify(testNoEvt));
 
 /* ------------------------------------------------------------------ 汇总 */
 
