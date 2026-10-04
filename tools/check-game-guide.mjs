@@ -215,21 +215,36 @@ check("生成物内联配置 = nipple/clitoris/vagina/anus（与文档 §4.2 一
   JSON.stringify(configuredParts) === JSON.stringify(["anus", "clitoris", "nipple", "vagina"]),
   configuredParts.join(","));
 
-/* 规范部位清单：用【结构标记】定位，不靠标题文字（标题会被编辑改动）。
- * 文档里该清单是紧跟 "### 4.1" 之后的第一个代码块。 */
+/* 部位名：【可扩展】但有命名规范。
+ * 文档不得把部位清单写成"只能用这些" —— 接收端本来就没有部位白名单，
+ * 部位是否生效由接收端配置决定，可以按规范增加。 */
 const partSectionStart = guide.indexOf("### 4.1");
 check("能找到 §4.1 小节", partSectionStart >= 0);
-const partBlockStart = guide.indexOf("```", partSectionStart);
+const stdSectionStart = guide.indexOf("### 4.2", partSectionStart);
+const partBlockStart = guide.indexOf("```", stdSectionStart);
 const partBlockEnd = guide.indexOf("```", partBlockStart + 3);
 const listedParts = guide.slice(partBlockStart + 3, partBlockEnd).split(/\s+/).filter(Boolean);
-check("§4.1 规范清单含 12 个部位（与协议一致）",
+check("§4.2 已定义部位清单含 12 个标准名",
   listedParts.length === 12, `实际 ${listedParts.length}: ${listedParts.join(",")}`);
-check("§4.1 清单用全称 clitoris/anus，不含 clit/anal",
+check("§4.2 清单用全称 clitoris/anus，不含 clit/anal",
   listedParts.includes("clitoris") && listedParts.includes("anus") &&
   !listedParts.includes("clit") && !listedParts.includes("anal"), listedParts.join(","));
+/* 可扩展性必须写清楚，且要给出规范 */
+check("§4.1 说明部位名可扩展", guide.includes("可扩展") || guide.includes("不是固定"));
+check("§4.1 给出命名规范（解剖学全称 / 小写 / 下划线）",
+  guide.includes("解剖学英文全称") && guide.includes("下划线"));
+check("§4.1 明确部位名不得表示设备或事件",
+  guide.includes("不表示") && guide.includes("estim_nipple"));
+check("§4.1 说明新增部位需与接收端约定",
+  guide.includes("接收端维护者") && guide.includes("约定"));
 check("§4.1 明确警告不要用 clit/anal",
   guide.includes("不是 `clit`") && guide.includes("不是 `anal`"));
-check("§4.3 警告 docs/05 的旧键名会静默失效",
+/* 反向：不得出现"只能用这 12 个"这类封闭表述 */
+const CLOSED_WORDING = [/只能用这\s*\d+\s*个/, /仅限于这\s*\d+\s*个/, /不得超过这\s*\d+\s*个/];
+for (const re of CLOSED_WORDING) {
+  check(`未出现封闭式表述 ${re}`, !re.test(guide));
+}
+check("§4.5 警告游戏内部键名不能用",
   guide.includes("generic_ep") && guide.includes("静默忽略"));
 
 /* ------------------------------------------------- E. 文档必须讲到的要点 */
@@ -253,7 +268,8 @@ const REQUIRED_TOPICS = [
   ["priority 的作用与判定顺序", (g) => g.includes("priority") && g.includes("大者胜")],
   ["旋转换向要显式发方向", (g) => g.includes("rotateDirection")],
   ["给出可直接改用的代码骨架", (g) => g.includes("postCommand") && g.includes("setBaseline")],
-  ["12 个规范部位全称", (g) => g.includes("urethra") && g.includes("prostate")],
+  ["部位命名规范可扩展（不是固定清单）",
+    (g) => (g.includes("可扩展") || g.includes("不是固定")) && g.includes("解剖学英文全称")],
   ["虚拟组不支持（要发多条 target）", (g) => g.includes("虚拟组") && g.includes("多条 target")],
 ];
 
@@ -303,6 +319,24 @@ for (const [re, label] of FORBIDDEN_PRESCRIPTIONS) {
 }
 check("明确说明体感逻辑由游戏侧自行判断",
   guide.includes("留给你的判断") && guide.includes("按实际游戏定"));
+
+/* H. 跨文档一致性：三份文档对"部位名"的描述必须一致（可扩展 + 同一套命名规范）
+ * 否则游戏侧指南说"可扩展"、接口文档说"只有这 12 个"，读者无所适从。 */
+console.log("\nH. 三份文档对「部位名」的描述必须一致");
+const protocolDoc = readFileSync(join(ROOT, "docs", "02-webhook-protocol.md"), "utf8");
+const mappingDoc = readFileSync(join(ROOT, "docs", "03-protocol-mapping.md"), "utf8");
+for (const [label, doc] of [["docs/02 接口文档", protocolDoc], ["docs/03 映射文档", mappingDoc]]) {
+  check(`${label}：说明部位名可扩展/非白名单`,
+    (doc.includes("不是硬上限") || doc.includes("没有\"协议部位白名单\"") ||
+     doc.includes("没有「协议部位白名单」") || doc.includes("可扩展")));
+  check(`${label}：写出解剖学全称的命名规范`, doc.includes("解剖学"));
+  check(`${label}：写出下划线规则`, doc.includes("下划线"));
+  check(`${label}：明确只表示部位、不表示动作或设备`,
+    doc.includes("只表示部位") || doc.includes("只表示\"哪个部位\""));
+}
+check("三份文档都不把部位清单写成封闭清单",
+  [/只能用这\s*\d+\s*个/, /仅限于这\s*\d+\s*个/].every((re) =>
+    !re.test(guide) && !re.test(protocolDoc) && !re.test(mappingDoc)));
 
 /* ------------------------------------------------------------------ 汇总 */
 

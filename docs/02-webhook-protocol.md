@@ -128,9 +128,21 @@ Webhook POST 到 `https://webhook.xtoys.app/<Webhook ID>`，`Content-Type: appli
 
 `mouth`、`breast`、`nipple`、`armpit`、`clitoris`、`vulva`、`vagina`、`urethra`、`anus`、`butt`、`penis`、`prostate`
 
-> 部位名一律用**全称**（`clitoris` / `anus`，不用 `clit` / `anal`）。
-> Block 名、Channel ID、变量名、Job 名沿用同一部位名，两边必须完全一致，
-> 否则游戏侧发的部位名会被判为未知部位而整体拒绝。见 `docs/03-protocol-mapping.md` §2.1 / §2.3。
+**这份清单是"已定义的标准名"，不是硬上限。** 协议里 `part` 只是一个非空字符串，
+**接收端没有部位白名单**（2026-10-05 确认：`part` 的唯一硬要求是非空字符串）——
+某个部位名是否生效，由**接收端配置表里有没有它**决定。所以按需增加部位是允许的。
+
+**新增部位必须遵守的命名规范**（否则接收端侧无法一致地扩展）：
+
+1. **解剖学英文全称、小写**（`clitoris` 不是 `clit`，`anus` 不是 `anal`）。
+2. **多词用下划线**（`left_nipple`、`inner_thigh`）。
+3. **只表示部位，不表示动作或设备**（❌ `estim_nipple`、`vibrate_mode2`、`hit_left`）。
+4. 名称一经使用不再改动（两侧必须完全一致）。
+
+> Block 名、Channel ID、变量名、Job 名沿用同一部位名。
+> **部位名不在接收端配置里时会被"忽略并留痕"，不是整体拒绝** ——
+> 这是有意的：部位名是否可用由配置决定，不该由协议白名单裁决。
+> 见 `docs/03-protocol-mapping.md` §2.1 / §2.3 / §6.1。
 
 **`part` 是协议里唯一的执行定位键。** 协议不包含通道名、设备名、逻辑执行器 id、slot 或权重 ——
 "哪个部位对应哪几个 Block"是接收端的配置，见 **`docs/03-protocol-mapping.md`**。
