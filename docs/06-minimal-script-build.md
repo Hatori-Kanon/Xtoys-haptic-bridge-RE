@@ -21,6 +21,23 @@ Webhook 端点**仍然返回 HTTP 200**。
   `ignored <detail>`），或读诊断变量 `xthb-rejected-count` / `xthb-ignored-count` /
   `xthb-last-error` / `xthb-last-ignored`。
 
+### 0.2 启动后先在日志里确认初始化成功（重要）
+
+真机首次实测曾遇到：启动即报 `init 失败: 配置不是合法 JSON`，之后所有 webhook 都
+因"运行时未初始化"而无反应。修法见 `docs/07` §1.1（tick 自愈 + 诊断增强）。
+
+**所以启动 Script 后，先看 XToys 日志里有没有这一行：**
+
+```
+[xthb] 初始化完成：部位 4 个，Block 9 个
+```
+
+- ✅ 有这行 → 运行时正常，可以开始验收。
+- ⚠️ 只有 `初始化完成：部位 4 个，Block 9 个` 前面带 `配置在 tick 里补读成功`
+  → 也正常（说明启动顺序确实有竞争，自愈生效了）。请把这行反馈给我。
+- ❌ 出现 `init 失败: 配置不是合法 JSON（读到 N 字符："…"）` → **把这条日志原文发我**。
+  现在它会打印实际读到的内容，能一次定位根因。
+
 ---
 
 ## 0. 先明确三件事
@@ -74,6 +91,7 @@ export const PARTS = {
 1. 打开 XToys → Scripts → 导入/粘贴 Script JSON → 选择 `examples/xtoys-minimal-3path.json`。
 2. 导入后应看到 **10 个 Job**（1 个调度 + 9 个输出）与 **10 个通道**（1 个 webhook + 9 个 Block）。
 3. **不要**在 UI 里改动 Job 名、变量名或通道 ID —— 运行时按名字找它们。
+4. 启动后先按 §0.2 确认日志里出现"初始化完成"。
 
 ---
 
