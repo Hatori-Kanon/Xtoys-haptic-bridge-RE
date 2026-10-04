@@ -70,13 +70,14 @@ Block 是 XToys UI 上的输出槽，也是用户绑定物理设备/子通道的
 
 | metric | Channel type | 消费的指标 | 忽略的指标 |
 | --- | --- | --- | --- |
-| `estim` | `part-estim` | `intensity`、`frequency` | `rotateSpeed` |
-| `vibrate` | `part-vibrator` | `intensity` | `frequency`、`rotateSpeed` |
-| `rotate` | `part-rotator` | `rotateSpeed`（+ 方向） | `intensity`、`frequency` |
+| `estim` | `part-estim` | `estimIntensity`、`frequency` | `vibrateIntensity`、`rotateSpeed` |
+| `vibrate` | `part-vibrator` | `vibrateIntensity` | `estimIntensity`、`frequency`、`rotateSpeed` |
+| `rotate` | `part-rotator` | `rotateSpeed`（+ 方向） | `estimIntensity`、`vibrateIntensity`、`frequency` |
 
 指标与能力对齐规则（这是既有结论，这里只是确认它足够表达全部意图）：
 
-- **强度槽只读 `intensity`，旋转槽只读 `rotateSpeed`，两者互不推导。**
+- **强度按通道分开读**：estim 槽只读 `estimIntensity`，vibrate 槽只读 `vibrateIntensity`，
+  旋转槽只读 `rotateSpeed`。三者**互不推导、互不共享**（2026-10-05 拆分，原因见 §6.2.3）。
 - Block 收到自己不消费的指标时**忽略**它，不报错（游戏侧合法地描述了意图，
   只是这个部位没有那类执行器）。忽略必须留痕，见 §6.2。
 
@@ -112,7 +113,7 @@ Block 是 XToys UI 上的输出槽，也是用户绑定物理设备/子通道的
 这条把旋转的定位说清楚了，接收端据此设计：
 
 - **`rotateSpeed` 通常随某个部位的刺激事件一起带上来**：游戏侧发一个 `nipple` target，
-  同时带 `intensity` 与 `rotateSpeed`，于是 `Estim-nipple`/`Vibrate-nipple` 消费强度、
+  同时带 `estimIntensity`/`vibrateIntensity` 与 `rotateSpeed`，于是两个强度通道各取所需、
   `Rotate-nipple` 消费速度。这落在 §6.2「每条指标各自独立判断」的规则上，不需要额外机制。
 - **纯旋转的 target 也完全合法**（只带 `rotateSpeed` + `rotateDirection`）：
   该部位有 rotate Block 就正常驱动；只有 estim/vibrate Block 就忽略那一条指标（§6.2.1）。
@@ -161,7 +162,7 @@ Block 是 XToys UI 上的输出槽，也是用户绑定物理设备/子通道的
 该 part 所有【未到期】事件的意图 → 逐一加入，sequence = 该事件的 sequence
 
 过滤 1：只保留带了这个 metric 的意图
-        （字段存在且 xthbIsFiniteNumber 为真；因此 intensity=0 也是合法候选）
+        （字段存在且 xthbIsFiniteNumber 为真；因此 estimIntensity=0 也是合法候选）
 过滤 2：该 part 在这个 metric 下必须配了 Block，否则该指标被忽略并留痕（§6.2）
 ```
 
@@ -207,9 +208,9 @@ winner 决定该 Block 的**全部**字段：
 
 这是三条指标里**唯一**不遵守"缺省即归零"的一条，原因是语义不同：
 
-- `intensity` / `rotateSpeed` 描述"这个执行器现在该出多大力"。缺省 → 没有驱动者 →
+- `estimIntensity` / `vibrateIntensity` / `rotateSpeed` 描述"这个执行器现在该出多大力"。缺省 → 没有驱动者 →
   写 **0**（停这个执行器）是对的。
-- `frequency` 在 E-Stim 上是**调制方式**，不是刺激量。`intensity = 0` 时设备本来就无输出，
+- `frequency` 在 E-Stim 上是**调制方式**，不是刺激量。`estimIntensity = 0` 时设备本来就无输出，
   此时把频率写 0 毫无意义，反而会改变下一次输出的手感/音色。
 
 因此规则是：
@@ -256,7 +257,7 @@ winner 决定该 Block 的**全部**字段：
 | 情形 | value | driveId | 结果 |
 | --- | --- | --- | --- |
 | 稳定输出中，连续多次 tick 无事发生 | 不变 | 不变 | **跳过**（防抖生效，不碰硬件） |
-| 基线 20 持续中，来了 `intensity=20` 的 `play` | 不变 | **变** | **推送**，输出 Job 重跑，`rampTime` = 该事件的 `rampUpMs` |
+| 基线 20 持续中，来了 `estimIntensity=20` 的 `play` | 不变 | **变** | **推送**，输出 Job 重跑，`rampTime` = 该事件的 `rampUpMs` |
 | 该事件到期，回落到基线 | 不变 | **变** | **推送**，重跑一次（升/降各按自己的 ramp） |
 | 高优先级事件压过基线（值不同） | 变 | 变 | 推送 |
 
@@ -326,19 +327,45 @@ winner 决定该 Block 的**全部**字段：
 
 | 指标 | 驱动什么 | 没有对应 Block 时 |
 | --- | --- | --- |
-| `intensity` | 该部位的 **estim + vibrate** Block | 忽略并留痕 |
+| `estimIntensity` | 该部位的 **estim** Block | 忽略并留痕 |
+| `vibrateIntensity` | 该部位的 **vibrate** Block | 忽略并留痕 |
 | `frequency` | 该部位的 **estim** Block（`vibrate` 永不消费频率） | 忽略并留痕 |
 | `rotateSpeed` + `rotateDirection` | 该部位的 **rotate** Block | 忽略并留痕 |
 
-**`intensity` 与 `frequency` 是 estim Block 上的两个独立维度**，不是"主指标 + 附加项"：
+**`estimIntensity` 与 `frequency` 是 estim Block 上的两个独立维度**，不是"主指标 + 附加项"：
 
-- 只带 `intensity`：改音量，频率保持设备当前值。
+- 只带 `estimIntensity`：改 estim 音量，频率保持设备当前值。
 - 只带 `frequency`：**只改频率，音量变量根本不写**（不能把正在输出的强度拽到 0）。
 - 两个都带：音量与频率取同一个意图（它在两个维度都胜出）。
 
+### 6.2.3 为什么强度按通道拆开（2026-10-05）
+
+早期版本用一个 `intensity` 同时驱动该部位的 estim 与 vibrate 两条通道。
+真机验收（2026-10-05）确认了这个行为的后果：**只要给一个部位强度，两条通道就一起动**。
+
+用户的要求：**分开**。理由是市面上出现了"**同一部位同时使用 E-Stim 与振动**"的设备，
+需要能分别控制两条通道 —— 一个字段无法表达"estim 80% 但振动 20%"。
+
+因此协议改为两个显式字段：
+
+| 字段 | 驱动 |
+| --- | --- |
+| `estimIntensity` | 该部位的 estim Block |
+| `vibrateIntensity` | 该部位的 vibrate Block |
+
+**不保留 `intensity` 兼容别名。** 发 `intensity` 会被当成"没有驱动指标"而整体拒绝 ——
+这是有意的：静默忽略会让游戏侧以为生效了（`HANDOFF.md` §3.4 的同类问题）。
+
+好处：**双模设备可以用一条 target 精确表达**：
+
+```json
+{ "part": "nipple", "estimIntensity": 80, "vibrateIntensity": 20, "frequency": 55, "durationMs": 900 }
+```
+
 **什么算"可驱动指标"**（用于判断一条 target 是不是空的）：
 
-- `intensity` 出现即算（含 `0`）
+- `estimIntensity` 出现即算（含 `0`）
+- `vibrateIntensity` 出现即算（含 `0`）
 - `frequency` 出现即算（含 `0`）
 - `rotateSpeed` 出现即算（**含 `0`**）
 - `rotateDirection` **单独**出现不算
@@ -358,7 +385,7 @@ winner 决定该 Block 的**全部**字段：
 那时就会出现**只有 rotate 的情况**；如果 XToys 侧该部位只有 rotate Block、
 没有 estim/vibrate Block，直接忽略掉那两条即可。
 
-因此**不设"`intensity` 是唯一驱动入口"这类规则**。纯旋转 target
+因此**不设"某个字段是唯一驱动入口"这类规则**。纯旋转 target
 （只带 `rotateSpeed` + `rotateDirection`）是**完全合法**的：
 
 - 该部位有 rotate Block → 正常驱动旋转。
@@ -400,7 +427,7 @@ Block 上，而"组"本身没有专属 Block。
 
 ```json
 "targets": [
-  { "part": "vagina", "intensity": 40, "rotateSpeed": 60, "rotateDirection": "clockwise", "durationMs": 900 }
+  { "part": "vagina", "vibrateIntensity": 40, "rotateSpeed": 60, "rotateDirection": "clockwise", "durationMs": 900 }
 ]
 ```
 
@@ -444,7 +471,7 @@ Block 上，而"组"本身没有专属 Block。
 | 旋转路径 | 只生成 `Rotate-nipple` 样板，真机未验证（§2.3） |
 | rotate 的定位 | 随刺激事件带上的指标；**纯 rotate 的 target 合法**（§2.4、§6.2.1） |
 | 指标不匹配 | 每条指标各自独立，忽略并留痕，不报错（§6.2） |
-| target 是否为空 | 驱动指标（`intensity` / `frequency` / `rotateSpeed`，含 `0`）一个都没有才拒绝（§6.2） |
+| target 是否为空 | 驱动指标（`estimIntensity` / `vibrateIntensity` / `frequency` / `rotateSpeed`，含 `0`）一个都没有才拒绝（§6.2） |
 | 虚拟组 | 不做（§6.3、`webhook-protocol.md` §4） |
 | 同部位重复 target | 非法写法，整体拒绝（§6.5） |
 | 仲裁粒度 | 通道独占，只在同一部位内部竞争（§5） |

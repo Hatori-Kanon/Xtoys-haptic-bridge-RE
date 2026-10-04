@@ -95,24 +95,24 @@ function Inner {
 $stepDefs = @()
 
 $stepDefs += @{
-  Id = 1; Title = 'E-Stim 低强度持续输出（set_baseline）'; NeedsRotator = $false
-  Expect = 'E-Stim 通道出现【低强度】持续输出。请先用你确认安全的很小的数值；不要用高档位开始。'
+  Id = 1; Title = 'E-Stim 低强度持续输出，且振动通道【不应】被动（验证强度已按通道分开）'; NeedsRotator = $false
+  Expect = 'E-Stim 通道出现【低强度】持续输出；同时【振动通道必须完全不动】—— 本步只给了 estimIntensity，vibrate 必须保持 0。若振动也动了，说明两个强度字段没有真正分开。请先用你确认安全的很小的数值。'
   Inner = (Inner -Command 'set_baseline' -Sequence 1 -Targets @(
-      @{ part = 'nipple'; intensity = 15; frequency = 30; rampUpMs = 800 }))
+      @{ part = 'nipple'; estimIntensity = 15; frequency = 30; rampUpMs = 800 }))
 }
 
 $stepDefs += @{
-  Id = 2; Title = '振动器低强度持续输出（set_baseline）'; NeedsRotator = $false
-  Expect = '振动器出现低强度持续振动。'
+  Id = 2; Title = '振动器低强度持续输出（只给 vibrateIntensity）'; NeedsRotator = $false
+  Expect = '振动器出现低强度持续振动。注意本步是 set_baseline 的【新快照】（seq=2），会替换步骤 1 的快照，所以 E-Stim 会停 —— 这是快照语义，不是缺陷。'
   Inner = (Inner -Command 'set_baseline' -Sequence 2 -Targets @(
-      @{ part = 'nipple'; intensity = 25; rampUpMs = 600 }))
+      @{ part = 'nipple'; vibrateIntensity = 25; rampUpMs = 600 }))
 }
 
 $stepDefs += @{
   Id = 3; Title = 'play 瞬态叠加 + 到期回到基线'; NeedsRotator = $false
   Expect = 'E-Stim 强度短暂增强（约 0.9 秒），然后【回到步骤 1 的基线强度】，而不是归零。同时留意渐入是否大致像 0.3 秒。'
   Inner = (Inner -Command 'play' -Sequence 1 -EventId 'acc-transient' -Targets @(
-      @{ part = 'nipple'; intensity = 60; frequency = 30; durationMs = 900; rampUpMs = 300; rampDownMs = 300 }))
+      @{ part = 'nipple'; estimIntensity = 60; frequency = 30; durationMs = 900; rampUpMs = 300; rampDownMs = 300 }))
 }
 
 $stepDefs += @{
@@ -125,7 +125,7 @@ $stepDefs += @{
     '要看"重新渐入"的可见效果，请跑下一步（4b）。'
   ) -join ' '
   Inner = (Inner -Command 'play' -Sequence 1 -EventId 'acc-retrigger' -Targets @(
-      @{ part = 'nipple'; intensity = 15; frequency = 30; durationMs = 900; rampUpMs = 300; rampDownMs = 300 }))
+      @{ part = 'nipple'; estimIntensity = 15; frequency = 30; durationMs = 900; rampUpMs = 300; rampDownMs = 300 }))
 }
 
 $stepDefs += @{
@@ -136,9 +136,9 @@ $stepDefs += @{
     '这是重推机制真正起作用的场景 —— 与上一步的区别是"中间有没有回落"。'
   ) -join ' '
   Inner = (Inner -Command 'play' -Sequence 1 -EventId 'acc-hit-1' -Targets @(
-      @{ part = 'nipple'; intensity = 40; frequency = 30; durationMs = 500; rampUpMs = 300 }))
+      @{ part = 'nipple'; estimIntensity = 40; frequency = 30; durationMs = 500; rampUpMs = 300 }))
   FollowUp = (Inner -Command 'play' -Sequence 1 -EventId 'acc-hit-2' -Targets @(
-      @{ part = 'nipple'; intensity = 40; frequency = 30; durationMs = 500; rampUpMs = 300 }))
+      @{ part = 'nipple'; estimIntensity = 40; frequency = 30; durationMs = 500; rampUpMs = 300 }))
   FollowUpGapMs = 900
 }
 
@@ -146,14 +146,14 @@ $stepDefs += @{
   Id = 5; Title = 'frequency 显式值生效'; NeedsRotator = $false
   Expect = 'E-Stim 【频率】明显变化（0-100 相对量），强度大体不变。'
   Inner = (Inner -Command 'play' -Sequence 1 -EventId 'acc-freq-hi' -Targets @(
-      @{ part = 'nipple'; intensity = 20; frequency = 85; durationMs = 3000; rampUpMs = 0 }))
+      @{ part = 'nipple'; estimIntensity = 20; frequency = 85; durationMs = 3000; rampUpMs = 0 }))
 }
 
 $stepDefs += @{
   Id = 6; Title = 'frequency 缺省 = 保持不变（不改设备当前频率）'; NeedsRotator = $false
   Expect = '发一个【不带 frequency】的命令后：强度按新值变化，但【频率保持上一步 85 不变】。若频率被归零/跳回低值，说明缺省被当成 0 了 —— 这是本轮最关键的语义。'
   Inner = (Inner -Command 'play' -Sequence 1 -EventId 'acc-freq-absent' -Targets @(
-      @{ part = 'nipple'; intensity = 45; durationMs = 3000; rampUpMs = 0 }))
+      @{ part = 'nipple'; estimIntensity = 45; durationMs = 3000; rampUpMs = 0 }))
 }
 
 $stepDefs += @{
@@ -174,39 +174,39 @@ $stepDefs += @{
   Id = 9; Title = '多部位独立（不同 Block 互不干扰）'; NeedsRotator = $false
   Expect = 'clitoris 与 nipple 各自输出自己的强度；改变 clitoris 不应影响 nipple。'
   Inner = (Inner -Command 'set_baseline' -Sequence 3 -Targets @(
-      @{ part = 'nipple'; intensity = 20; frequency = 30 },
-      @{ part = 'clitoris'; intensity = 50; rampUpMs = 500 }))
+      @{ part = 'nipple'; estimIntensity = 20; frequency = 30 },
+      @{ part = 'clitoris'; estimIntensity = 50; rampUpMs = 500 }))
 }
 
 $stepDefs += @{
   Id = 10; Title = 'priority：数值更小但优先级更高的事件接管'; NeedsRotator = $false
-  Expect = '强度本来在 20；发一个 intensity=10 但 priority=10 的事件后，输出应【降到 10】（而不是被 20 压住不动）。这验证 priority 是第一级判据。'
+  Expect = '强度本来在 20；发一个 estimIntensity=10 但 priority=10 的事件后，输出应【降到 10】（而不是被 20 压住不动）。这验证 priority 是第一级判据。'
   Inner = (Inner -Command 'play' -Sequence 1 -EventId 'acc-priority' -Targets @(
-      @{ part = 'nipple'; intensity = 10; frequency = 30; durationMs = 3000; priority = 10; rampUpMs = 0 }))
+      @{ part = 'nipple'; estimIntensity = 10; frequency = 30; durationMs = 3000; priority = 10; rampUpMs = 0 }))
 }
 
 $stepDefs += @{
   Id = 11; Title = '忽略留痕：未识别部位被忽略而不是整体拒绝'; NeedsRotator = $false
   Expect = '设备【没有任何反应】（这是对的）。XToys 日志里应出现 ignored 的说明，且既有输出不受影响。'
   Inner = (Inner -Command 'play' -Sequence 1 -EventId 'acc-unknown' -Targets @(
-      @{ part = 'tentacle'; intensity = 90; durationMs = 2000 }))
+      @{ part = 'tentacle'; estimIntensity = 90; durationMs = 2000 }))
 }
 
 $stepDefs += @{
   Id = 12; Title = '拒绝：同一 targets 里同部位重复'; NeedsRotator = $false
   Expect = '设备【没有任何反应】（这是对的）。XToys 日志里应出现 rejected invalid_targets。'
   Inner = (Inner -Command 'play' -Sequence 1 -EventId 'acc-dup' -Targets @(
-      @{ part = 'nipple'; intensity = 40; durationMs = 2000 },
-      @{ part = 'nipple'; intensity = 60; durationMs = 2000 }))
+      @{ part = 'nipple'; estimIntensity = 40; durationMs = 2000 },
+      @{ part = 'nipple'; estimIntensity = 60; durationMs = 2000 }))
 }
 
 $stepDefs += @{
   Id = 13; Title = 'sequence 不递增必须被拒绝（缺陷 1 回归）'; NeedsRotator = $false
   Expect = '第二次发送应无效（设备不变）。日志里应出现 rejected invalid_sequence —— 这一条专门验"失败不再被静默当成成功"。'
   Inner = (Inner -Command 'play' -Sequence 1 -EventId 'acc-seq' -Targets @(
-      @{ part = 'nipple'; intensity = 90; durationMs = 2000 }))
+      @{ part = 'nipple'; estimIntensity = 90; durationMs = 2000 }))
   PreInner = (Inner -Command 'play' -Sequence 1 -EventId 'acc-seq' -Targets @(
-      @{ part = 'nipple'; intensity = 90; durationMs = 2000 }))
+      @{ part = 'nipple'; estimIntensity = 90; durationMs = 2000 }))
 }
 
 $stepDefs += @{

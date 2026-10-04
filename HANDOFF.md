@@ -163,7 +163,7 @@ Script 是手动启停的。启动 = Initial Actions（归零 → 写配置 → 
 - `source + eventId` 是事件身份，`sequence` 必须**严格递增**才生效。
 - 基线是**快照**不是叠加；`stop_all` 后同一 source 的基线序号栅栏仍保留，必须继续递增（或换 source）。
 - 旋转**不会自动反向**；必须显式发新的 `rotateDirection`。
-- 强度槽只读 `intensity`，旋转槽只读 `rotateSpeed`，两者互不推导。
+- **强度按通道分开**：estim 槽只读 `estimIntensity`，vibrate 槽只读 `vibrateIntensity`，旋转槽只读 `rotateSpeed`，三者互不推导。
 
 ---
 
@@ -193,7 +193,7 @@ Script 是手动启停的。启动 = Initial Actions（归零 → 写配置 → 
 
 只需要三样东西：
 
-1. **一份最新意图**：`part → {intensity, frequency, rotateSpeed, direction, ramp}`（有限事件 + 基线）。
+1. **一份最新意图**：`part → {estimIntensity, vibrateIntensity, frequency, rotateSpeed, direction, ramp}`（有限事件 + 基线）。
 2. **一个 100 ms tick**：算出每个通道当前应该输出的值。
 3. **一次写变量 + 启动 Job**：**数值 或 驱动者身份**都没变才跳过（唯一的优化，防抖）。
    不能只比数值 —— 新事件强度恰好相同时若不重推，体感上就没有这次 ramp（见 `docs/03-protocol-mapping.md` §4.4）。

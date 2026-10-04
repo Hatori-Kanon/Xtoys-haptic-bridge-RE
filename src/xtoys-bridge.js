@@ -636,10 +636,23 @@ function xthbParseTarget(raw, index, requireDriveMetric) {
   }
   target.part = raw.part;
 
-  if (xthbHasOwn(raw, "intensity")) {
-    target.intensity = xthbRequireNumber(raw.intensity, 0, 100);
-    if (target.intensity === null) {
-      return { error: "targets[" + index + "].intensity 非法" };
+  /*
+   * 强度按通道分开（协议 2026-10-05 决定）：
+   *   estimIntensity   → 该部位的 estim Block
+   *   vibrateIntensity → 该部位的 vibrate Block
+   * 已删除旧的单一 `intensity` 字段 —— 它会让"同一部位同时用 estim 与 vibrate"
+   * 的设备无法分别控制（用户明确要求分开，以便适配这类双模设备）。
+   */
+  if (xthbHasOwn(raw, "estimIntensity")) {
+    target.estimIntensity = xthbRequireNumber(raw.estimIntensity, 0, 100);
+    if (target.estimIntensity === null) {
+      return { error: "targets[" + index + "].estimIntensity 非法" };
+    }
+  }
+  if (xthbHasOwn(raw, "vibrateIntensity")) {
+    target.vibrateIntensity = xthbRequireNumber(raw.vibrateIntensity, 0, 100);
+    if (target.vibrateIntensity === null) {
+      return { error: "targets[" + index + "].vibrateIntensity 非法" };
     }
   }
   if (xthbHasOwn(raw, "frequency")) {
@@ -668,10 +681,10 @@ function xthbParseTarget(raw, index, requireDriveMetric) {
   }
 
   /* 驱动指标一个都没有 → 畸形输入（含只带 rotateDirection 的情况）。
-   * stop 的选择器不受此约束：它只指出部位，不表达意图。 */
+   * 注意 frequency 算驱动指标：它独立驱动 estim Block 的频率维度（见 §4.5）。 */
   if (requireDriveMetric &&
-    !xthbHasOwn(target, "intensity") && !xthbHasOwn(target, "frequency") &&
-    !xthbHasOwn(target, "rotateSpeed")) {
+    !xthbHasOwn(target, "estimIntensity") && !xthbHasOwn(target, "vibrateIntensity") &&
+    !xthbHasOwn(target, "frequency") && !xthbHasOwn(target, "rotateSpeed")) {
     return { error: "targets[" + index + "] 没有任何驱动指标" };
   }
 
@@ -891,17 +904,22 @@ function xthbIntentPriority(intent) {
 /*
  * 该意图在这个 metric 下的仲裁值；不参与 → null。
  *
- * 收集候选的条件不是"有 intensity"，而是"有本 Block 需要的东西"：
- *   - estim / vibrate 的音量：intensity
- *   - estim 的频率：frequency（**独立仲裁**，见 xthbComputeBlock）
- *   - rotate：rotateSpeed
- * 早期实现把 frequency-only 的意图当成 intensity=0 参与音量仲裁，
- * 结果是"只发频率"的意图被一个更强的音量意图压掉，频率根本没生效。
+ * 强度按通道分开（2026-10-05 协议改动）：
+ *   estim   ← estimIntensity
+ *   vibrate ← vibrateIntensity
+ *   rotate  ← rotateSpeed
+ *   frequency 是 estim 上的第二个维度，独立仲裁（见 xthbComputeBlock）。
  */
 function xthbMetricValue(intent, metric) {
-  if (metric === XTHB_METRIC_ESTIM || metric === XTHB_METRIC_VIBRATE) {
-    if (xthbIsFiniteNumber(intent.intensity)) {
-      return intent.intensity;
+  if (metric === XTHB_METRIC_ESTIM) {
+    if (xthbIsFiniteNumber(intent.estimIntensity)) {
+      return intent.estimIntensity;
+    }
+    return null;
+  }
+  if (metric === XTHB_METRIC_VIBRATE) {
+    if (xthbIsFiniteNumber(intent.vibrateIntensity)) {
+      return intent.vibrateIntensity;
     }
     return null;
   }
@@ -1079,11 +1097,12 @@ function xthbDirectionCode(intent) {
 /*
  * 算出一个 Block 当前应该输出什么。
  *
- * value / frequency 各自可"未驱动"：
- *   - 非 estim Block（vibrate / rotate）：只由 intensity / rotateSpeed 驱动音量。
- *   - estim Block：音量需要 intensity；**频率可以独立于音量生效**
- *     （只发 frequency 的意图是合法的，见 docs/03 §6.2；此时音量不动、频率更新）。
- * 未驱动的字段写哨兵值，输出 Job 的条件 Action 就不会去碰设备上的那一项。
+ * 强度按通道分开读（2026-10-05 协议改动）：
+ *   - estim Block   ← estimIntensity（音量）+ frequency（频率，独立仲裁）
+ *   - vibrate Block ← vibrateIntensity（音量）
+ *   - rotate Block  ← rotateSpeed（速度）+ 方向
+ * value / frequency 各自可"未驱动"：未驱动时写哨兵值，输出 Job 的条件 Action
+ * 就不会去碰设备上的那一项。
  */
 function xthbComputeBlock(block, nowMs) {
   var winner = xthbArbitrate(block.part, block.metric, nowMs);
@@ -1109,10 +1128,10 @@ function xthbComputeBlock(block, nowMs) {
   out.driveId = winner.driveId;
 
   if (block.metric === XTHB_METRIC_ESTIM) {
-    hasIntensity = xthbIsFiniteNumber(winner.intent.intensity);
+    hasIntensity = xthbIsFiniteNumber(winner.intent.estimIntensity);
     if (hasIntensity) {
       out.valueDriven = true;
-      out.value = winner.intent.intensity;
+      out.value = winner.intent.estimIntensity;
       out.rampSeconds = xthbRampSeconds(winner.intent, out.value);
     }
     /*
@@ -1131,7 +1150,7 @@ function xthbComputeBlock(block, nowMs) {
     if (xthbIsFiniteNumber(freqWinner.intent.frequency)) {
       out.frequency = freqWinner.intent.frequency;
     }
-    /* 只有频率意图（没有 intensity）时 valueDriven 保持 false：
+    /* 只有频率意图（没有 estimIntensity）时 valueDriven 保持 false：
      * 这次只动频率，音量变量根本不写 —— 否则会把正在输出的强度拽到 0。 */
     return out;
   }
@@ -1204,11 +1223,11 @@ function xthbNoteTargetIgnores(targets, context) {
 /* 这条 target 是否带了这个指标（决定它需要不需要对应的 Block）。 */
 function xthbTargetCarriesMetric(target, metric) {
   if (metric === XTHB_METRIC_ESTIM) {
-    return xthbIsFiniteNumber(target.intensity) || xthbIsFiniteNumber(target.frequency);
+    return xthbIsFiniteNumber(target.estimIntensity) || xthbIsFiniteNumber(target.frequency);
   }
   if (metric === XTHB_METRIC_VIBRATE) {
-    /* 振动只消费 intensity；没有 vibrate Block 时 intensity 无处可去。 */
-    return xthbIsFiniteNumber(target.intensity);
+    /* 振动只消费 vibrateIntensity；没有 vibrate Block 时它无处可去。 */
+    return xthbIsFiniteNumber(target.vibrateIntensity);
   }
   if (metric === XTHB_METRIC_ROTATE) {
     return xthbIsFiniteNumber(target.rotateSpeed);

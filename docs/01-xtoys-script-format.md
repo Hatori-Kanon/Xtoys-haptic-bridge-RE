@@ -157,6 +157,11 @@ Webhook 通道实测形状：
 - `percentVolume` 与 `frequencyPercent` 可写数字，也可写 `{变量名}` 占位符或表达式字符串。
 - `rampTime` 为数字或表达式；变量名 `ramp-seconds` 暗示单位为秒 ⚠️未独立验证。
 - `setDirection` 的 `direction` 实测取 `clockwise` / `counterclockwise`；由 `requiredExpression` 控制该 Action 是否生效。
+- ✅ **实测确认（2026-10-05）：`percentVolume` / `frequencyPercent` 是百分比（0–100），
+  映射到设备自身的范围。** 例：**XToys 默认频率范围 10–100**，所以 `frequencyPercent: 30`
+  落在 `10 + 30% × 90 ≈ 37`。这意味着：
+  - 读数与发送值不一致是**正常的**，不是偏差。
+  - **`frequencyPercent: 0` 落在范围下限 10（最低频），不等于"关闭频率"。**
 
 ### 4.3 `updateJob` — 启停/跳转 Job
 
@@ -273,7 +278,7 @@ Script 的全局 JavaScript 运行在 **XToys JS-Interpreter** 中，约束：
 **这些显式 UI 归零 Action 是强制项。** JS 也会归零变量，但当 JS 抛错、运行时未初始化或 Job 刷新失败时，Final Actions 是唯一的硬件停止保障。它们只写"当前输出 = 0"，**不修改设备最大强度或最大旋转速度**。
 
 > ⚠️ **频率与模式不属于"归零"范畴（2026-09-30 定）。**
-> `frequency` 是 E-Stim 的**调制设置**，不是刺激量：`intensity = 0` 时设备本来就无输出。
+> `frequency` 是 E-Stim 的**调制设置**，不是刺激量：`estimIntensity = 0` 时设备本来就无输出。
 > 因此 **Initial / Final Actions 都不应该把频率归零** —— 音频归零只需 `setVolume = 0`。
 > 频率的缺省语义是"保持设备当前值"，规则见 `docs/03-protocol-mapping.md` §4.5。
 > 上面 1. 与 3. 里写的 `setFrequency=0` 属于旧参考实现的做法，本项目**不沿用**。

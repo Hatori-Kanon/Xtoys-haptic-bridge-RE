@@ -297,11 +297,11 @@ test("缺少 source → missing_source", () => {
     "missing_source", "应要求 source");
 });
 
-test("intensity 超范围夹取到 100", () => {
+test("estimIntensity 超范围夹取到 100", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e1", sequence: 1,
-    targets: [{ part: "nipple", intensity: 250, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 250, durationMs: 60000 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 100, "应夹到 100");
@@ -312,9 +312,9 @@ test("显式 null 的数值字段被拒绝", () => {
   for (const bad of ["50", null, true, {}, []]) {
     const result = host.call.handle(envelope({
       protocolVersion: 1, command: "play", source: "s", eventId: "e-" + String(bad), sequence: 1,
-      targets: [{ part: "nipple", intensity: bad, durationMs: 500 }],
+      targets: [{ part: "nipple", estimIntensity: bad, durationMs: 500 }],
     }));
-    assertEqual(result.ok, false, `intensity=${JSON.stringify(bad)} 应被拒绝`);
+    assertEqual(result.ok, false, `estimIntensity=${JSON.stringify(bad)} 应被拒绝`);
   }
 });
 
@@ -322,7 +322,7 @@ test("play 缺 durationMs → invalid_duration", () => {
   const host = bootHost();
   assertEqual(host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e1", sequence: 1,
-    targets: [{ part: "nipple", intensity: 50 }],
+    targets: [{ part: "nipple", estimIntensity: 50 }],
   })).code, "invalid_duration", "应要求正 durationMs");
 });
 
@@ -363,7 +363,7 @@ test("同一个 targets 里同部位重复 → 整体拒绝", () => {
   const result = host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e1", sequence: 1,
     targets: [
-      { part: "nipple", intensity: 40, durationMs: 1000 },
+      { part: "nipple", estimIntensity: 40, durationMs: 1000 },
       { part: "nipple", rotateSpeed: 60, rotateDirection: "clockwise", durationMs: 1000 },
     ],
   }));
@@ -376,7 +376,7 @@ test("test 命令只校验不驱动硬件", () => {
   const before = host.pushCount();
   assertEqual(host.call.handle(envelope({
     protocolVersion: 1, command: "test", source: "s", sequence: 1,
-    targets: [{ part: "nipple", intensity: 50 }],
+    targets: [{ part: "nipple", estimIntensity: 50 }],
   })).code, "validated", "应返回 validated");
   host.call.tick();
   assertEqual(host.pushCount(), before, "test 不得启动输出 Job");
@@ -389,7 +389,7 @@ test("未识别的部位返回 ok:true 并被忽略（不是整体拒绝）", ()
   const host = bootHost();
   const result = host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e1", sequence: 1,
-    targets: [{ part: "tentacle", intensity: 80, durationMs: 1000 }],
+    targets: [{ part: "tentacle", estimIntensity: 80, durationMs: 1000 }],
   }));
   assertEqual(result.ok, true, "未识别部位应被忽略而不是拒绝");
   host.call.tick();
@@ -403,12 +403,12 @@ test("部位存在但该指标没有 Block → 该指标被忽略", () => {
   /* vagina 只配了 vibrate；发 frequency 与 rotateSpeed 都应被忽略。 */
   const result = host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e1", sequence: 1,
-    targets: [{ part: "vagina", intensity: 30, frequency: 90, rotateSpeed: 50,
+    targets: [{ part: "vagina", vibrateIntensity: 30, frequency: 90, rotateSpeed: 50,
       rotateDirection: "clockwise", durationMs: 60000 }],
   }));
   assertEqual(result.ok, true, "应接受（部位与指标都合法）");
   host.call.tick();
-  assertEqual(host.V(VOL.vibrateVagina), 30, "vibrate 应拿到 intensity");
+  assertEqual(host.V(VOL.vibrateVagina), 30, "vibrate 应拿到 vibrateIntensity");
   assertEqual(host.V(VOL.rotateNipple), 0, "rotate 不得被 vagina 的 rotateSpeed 驱动");
 });
 
@@ -416,7 +416,7 @@ test("vibrate 永不消费 frequency（不写频率变量）", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e1", sequence: 1,
-    targets: [{ part: "vagina", intensity: 30, frequency: 90, durationMs: 60000 }],
+    targets: [{ part: "vagina", estimIntensity: 30, frequency: 90, durationMs: 60000 }],
   }));
   host.call.tick();
   assertEqual(host.V("xthb-vibrator-vagina-frequency"), undefined, "vibrate 不应有频率变量");
@@ -424,28 +424,60 @@ test("vibrate 永不消费 frequency（不写频率变量）", () => {
 
 section("4. 基线与有限事件");
 
-test("set_baseline 产生持续输出；intensity 驱动 estim + vibrate", () => {
+test("set_baseline 产生持续输出；两个强度字段各自驱动自己的通道", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
-    targets: [{ part: "nipple", intensity: 25 }],
+    targets: [{ part: "nipple", estimIntensity: 25, vibrateIntensity: 25 }],
   }));
   host.call.tick();
-  assertEqual(host.V(VOL.estimNipple), 25, "estim 应输出基线值");
-  assertEqual(host.V(VOL.vibrateNipple), 25, "vibrate 应输出基线值");
+  assertEqual(host.V(VOL.estimNipple), 25, "estim 应输出 estimIntensity");
+  assertEqual(host.V(VOL.vibrateNipple), 25, "vibrate 应输出 vibrateIntensity");
+});
+
+test("estimIntensity 只驱动 estim，vibrateIntensity 只驱动 vibrate（2026-10-05 拆分）", () => {
+  const host = bootHost();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 70 }],
+  }));
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 70, "estim 应输出 70");
+  assertEqual(host.V(VOL.vibrateNipple), 0, "只给 estimIntensity 时 vibrate 必须为 0");
+
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "set_baseline", source: "s", sequence: 2,
+    targets: [{ part: "nipple", vibrateIntensity: 40 }],
+  }));
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 0, "只给 vibrateIntensity 时 estim 必须为 0");
+  assertEqual(host.V(VOL.vibrateNipple), 40, "vibrate 应输出 40");
+});
+
+test("同一部位可同时给两个不同强度（双模设备的核心场景）", () => {
+  const host = bootHost();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "s", eventId: "dual", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 80, vibrateIntensity: 20,
+      frequency: 55, durationMs: 60000 }],
+  }));
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 80, "estim 用 estimIntensity");
+  assertEqual(host.V(VOL.vibrateNipple), 20, "vibrate 用 vibrateIntensity");
+  assertEqual(host.V(FREQ_NIPPLE), 55, "频率独立");
 });
 
 test("基线是完整快照：新快照遗漏的部位被清除", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
-    targets: [{ part: "nipple", intensity: 40 }],
+    targets: [{ part: "nipple", estimIntensity: 40 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 40, "第一条基线生效");
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 2,
-    targets: [{ part: "clitoris", intensity: 10 }],
+    targets: [{ part: "clitoris", estimIntensity: 10 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 0, "nipple 应被新快照清除");
@@ -456,7 +488,7 @@ test("空 targets 的 set_baseline 清空基线", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
-    targets: [{ part: "nipple", intensity: 40 }],
+    targets: [{ part: "nipple", estimIntensity: 40 }],
   }));
   host.call.tick();
   host.call.handle(envelope({
@@ -470,12 +502,12 @@ test("play 瞬态叠加，到期回到基线而不是归零", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
-    targets: [{ part: "nipple", intensity: 20 }],
+    targets: [{ part: "nipple", estimIntensity: 20 }],
   }));
   host.call.tick();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "hit", sequence: 1,
-    targets: [{ part: "nipple", intensity: 80, durationMs: 300 }],
+    targets: [{ part: "nipple", estimIntensity: 80, durationMs: 300 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 80, "事件期间取瞬态值");
@@ -488,12 +520,12 @@ test("sequence 必须严格递增，否则如实返回 invalid_sequence", () => 
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e1", sequence: 5,
-    targets: [{ part: "nipple", intensity: 30, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 30, durationMs: 60000 }],
   }));
   host.call.tick();
   const stale = host.call.handle(envelope({
     protocolVersion: 1, command: "update", source: "s", eventId: "e1", sequence: 5,
-    targets: [{ part: "nipple", intensity: 90, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 90, durationMs: 60000 }],
   }));
   assertEqual(stale.ok, false, "相同 sequence 必须返回失败");
   assertEqual(stale.code, "invalid_sequence", "错误码应为 invalid_sequence");
@@ -501,7 +533,7 @@ test("sequence 必须严格递增，否则如实返回 invalid_sequence", () => 
   assertEqual(host.V(VOL.estimNipple), 30, "被忽略的更新不得改变输出");
   host.call.handle(envelope({
     protocolVersion: 1, command: "update", source: "s", eventId: "e1", sequence: 6,
-    targets: [{ part: "nipple", intensity: 90, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 90, durationMs: 60000 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 90, "更大 sequence 应替换");
@@ -511,11 +543,11 @@ test("不同 source 可用相同 eventId", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "a", eventId: "hit", sequence: 1,
-    targets: [{ part: "nipple", intensity: 30, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 30, durationMs: 60000 }],
   }));
   assertEqual(host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "b", eventId: "hit", sequence: 1,
-    targets: [{ part: "nipple", intensity: 70, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 70, durationMs: 60000 }],
   })).ok, true, "不同 source 不应冲突");
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 70, "取更高值");
@@ -525,16 +557,16 @@ test("基线序号栅栏在 stop_all 后保留，必须继续递增", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 7,
-    targets: [{ part: "nipple", intensity: 30 }],
+    targets: [{ part: "nipple", estimIntensity: 30 }],
   }));
   host.call.handle(envelope({ protocolVersion: 1, command: "stop_all", source: "s" }));
   assertEqual(host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 7,
-    targets: [{ part: "nipple", intensity: 30 }],
+    targets: [{ part: "nipple", estimIntensity: 30 }],
   })).code, "invalid_sequence", "停机后相同序号应被拒绝");
   assertEqual(host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 8,
-    targets: [{ part: "nipple", intensity: 30 }],
+    targets: [{ part: "nipple", estimIntensity: 30 }],
   })).ok, true, "更大序号应被接受");
 });
 
@@ -544,11 +576,11 @@ test("priority 大者胜，即使数值更小", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "weak", sequence: 1,
-    targets: [{ part: "nipple", intensity: 90, durationMs: 60000, priority: 1 }],
+    targets: [{ part: "nipple", estimIntensity: 90, durationMs: 60000, priority: 1 }],
   }));
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "strong", sequence: 2,
-    targets: [{ part: "nipple", intensity: 10, durationMs: 60000, priority: 5 }],
+    targets: [{ part: "nipple", estimIntensity: 10, durationMs: 60000, priority: 5 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 10, "priority 5 应压过 priority 1");
@@ -558,11 +590,11 @@ test("priority 相同时数值大者胜", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "a", sequence: 9,
-    targets: [{ part: "nipple", intensity: 30, durationMs: 60000, priority: 2 }],
+    targets: [{ part: "nipple", estimIntensity: 30, durationMs: 60000, priority: 2 }],
   }));
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "b", sequence: 1,
-    targets: [{ part: "nipple", intensity: 60, durationMs: 60000, priority: 2 }],
+    targets: [{ part: "nipple", estimIntensity: 60, durationMs: 60000, priority: 2 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 60, "同 priority 取更大数值");
@@ -572,11 +604,11 @@ test("不同部位永不竞争：nipple 与 clitoris 各自独立", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "a", sequence: 1,
-    targets: [{ part: "nipple", intensity: 20, durationMs: 60000, priority: 99 }],
+    targets: [{ part: "nipple", estimIntensity: 20, durationMs: 60000, priority: 99 }],
   }));
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "b", sequence: 2,
-    targets: [{ part: "clitoris", intensity: 90, durationMs: 60000, priority: 1 }],
+    targets: [{ part: "clitoris", estimIntensity: 90, durationMs: 60000, priority: 1 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 20, "nipple 用自己的值");
@@ -587,11 +619,11 @@ test("基线（priority 0）被高优先级事件压过", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
-    targets: [{ part: "nipple", intensity: 30 }],
+    targets: [{ part: "nipple", estimIntensity: 30 }],
   }));
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "hit", sequence: 2,
-    targets: [{ part: "nipple", intensity: 95, durationMs: 60000, priority: 10 }],
+    targets: [{ part: "nipple", estimIntensity: 95, durationMs: 60000, priority: 10 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 95, "高优先级瞬态压过基线");
@@ -601,11 +633,11 @@ test("数值更小但 priority 更高的事件能压过基线（priority 存在�
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
-    targets: [{ part: "nipple", intensity: 30 }],
+    targets: [{ part: "nipple", estimIntensity: 30 }],
   }));
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "climax", sequence: 2,
-    targets: [{ part: "nipple", intensity: 20, durationMs: 60000, priority: 10 }],
+    targets: [{ part: "nipple", estimIntensity: 20, durationMs: 60000, priority: 10 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 20, "没有 priority 时会被基线的 30 静默压掉");
@@ -657,7 +689,7 @@ test("带方向的 intensity 事件同时驱动三条路径（合并成一条 ta
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "all", sequence: 1,
     targets: [{
-      part: "nipple", intensity: 65, frequency: 40,
+      part: "nipple", estimIntensity: 65, vibrateIntensity: 65, frequency: 40,
       rotateSpeed: 50, rotateDirection: "clockwise", durationMs: 60000,
     }],
   }));
@@ -676,7 +708,7 @@ test("没有 frequency 的意图 → 频率变量写哨兵值（不是 0）", ()
   /* 先明确设一个频率值。 */
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "withFreq", sequence: 1,
-    targets: [{ part: "nipple", intensity: 50, frequency: 70, durationMs: 100 }],
+    targets: [{ part: "nipple", estimIntensity: 50, frequency: 70, durationMs: 100 }],
   }));
   host.call.tick();
   assertEqual(host.V(FREQ_NIPPLE), 70, "有频率意图时应写该值");
@@ -684,7 +716,7 @@ test("没有 frequency 的意图 → 频率变量写哨兵值（不是 0）", ()
   host.testDate.current += 500;
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "noFreq", sequence: 2,
-    targets: [{ part: "nipple", intensity: 60, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 60, durationMs: 60000 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 60, "强度应更新");
@@ -696,7 +728,7 @@ test("显式 frequency = 0 是合法指令，写成 0（不是哨兵值）", () 
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e1", sequence: 1,
-    targets: [{ part: "nipple", intensity: 50, frequency: 0, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 50, frequency: 0, durationMs: 60000 }],
   }));
   host.call.tick();
   assertEqual(host.V(FREQ_NIPPLE), 0, "显式 0 应写成 0");
@@ -707,11 +739,11 @@ test("frequency 跟随强度 winner，不独立仲裁", () => {
   /* 低优先级但频率高；高优先级频率低且强度更大。 */
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "low", sequence: 1,
-    targets: [{ part: "nipple", intensity: 10, frequency: 99, durationMs: 60000, priority: 1 }],
+    targets: [{ part: "nipple", estimIntensity: 10, frequency: 99, durationMs: 60000, priority: 1 }],
   }));
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "high", sequence: 2,
-    targets: [{ part: "nipple", intensity: 80, frequency: 20, durationMs: 60000, priority: 5 }],
+    targets: [{ part: "nipple", estimIntensity: 80, frequency: 20, durationMs: 60000, priority: 5 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 80, "强度 winner 是 high");
@@ -722,11 +754,11 @@ test("音量 winner 没有频率意图时，频率取自带频率的最高优先
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "withFreq", sequence: 1,
-    targets: [{ part: "nipple", intensity: 10, frequency: 99, durationMs: 60000, priority: 1 }],
+    targets: [{ part: "nipple", estimIntensity: 10, frequency: 99, durationMs: 60000, priority: 1 }],
   }));
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "noFreq", sequence: 2,
-    targets: [{ part: "nipple", intensity: 80, durationMs: 60000, priority: 5 }],
+    targets: [{ part: "nipple", estimIntensity: 80, durationMs: 60000, priority: 5 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 80, "音量 winner 是 noFreq");
@@ -743,7 +775,7 @@ test("所有意图都没提频率时才写哨兵值", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "noFreq", sequence: 1,
-    targets: [{ part: "nipple", intensity: 80, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 80, durationMs: 60000 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 80, "强度应生效");
@@ -757,7 +789,7 @@ test("值没变时重复 tick 不再推送", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
-    targets: [{ part: "nipple", intensity: 33 }],
+    targets: [{ part: "nipple", estimIntensity: 33 }],
   }));
   host.call.tick();
   const before = host.pushCount();
@@ -771,13 +803,13 @@ test("新事件强度与当前相同也必须重推（driveId 变化）", () => 
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
-    targets: [{ part: "nipple", intensity: 20 }],
+    targets: [{ part: "nipple", estimIntensity: 20 }],
   }));
   host.call.tick();
   const before = host.pushCount();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "hit", sequence: 2,
-    targets: [{ part: "nipple", intensity: 20, rampUpMs: 150, durationMs: 900 }],
+    targets: [{ part: "nipple", estimIntensity: 20, rampUpMs: 150, durationMs: 900 }],
   }));
   host.call.tick();
   assert(host.pushCount() > before,
@@ -789,7 +821,7 @@ test("到期回落也推送（否则设备粘在旧值）", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
-    targets: [{ part: "nipple", intensity: 80, durationMs: 200 }],
+    targets: [{ part: "nipple", estimIntensity: 80, durationMs: 200 }],
   }));
   host.call.tick();
   const during = host.pushCount();
@@ -803,7 +835,7 @@ test("rampSeconds 变化也触发推送", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e1", sequence: 1,
-    targets: [{ part: "nipple", intensity: 50, rampUpMs: 100, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 50, rampUpMs: 100, durationMs: 60000 }],
   }));
   host.call.tick();
   assertEqual(host.V(RAMP_NIPPLE), 0.1, "rampUpMs=100 → 0.1 秒");
@@ -811,7 +843,7 @@ test("rampSeconds 变化也触发推送", () => {
   const before = host.pushCount();
   host.call.handle(envelope({
     protocolVersion: 1, command: "update", source: "s", eventId: "e1", sequence: 2,
-    targets: [{ part: "nipple", intensity: 50, rampUpMs: 400, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 50, rampUpMs: 400, durationMs: 60000 }],
   }));
   host.call.tick();
   assert(host.pushCount() > before, "ramp 变化应推送");
@@ -825,8 +857,8 @@ test("stop 只移除列出的部位", () => {
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e1", sequence: 1,
     targets: [
-      { part: "nipple", intensity: 80, durationMs: 60000 },
-      { part: "clitoris", intensity: 40, durationMs: 60000 },
+      { part: "nipple", estimIntensity: 80, durationMs: 60000 },
+      { part: "clitoris", estimIntensity: 40, durationMs: 60000 },
     ],
   }));
   host.call.tick();
@@ -845,11 +877,11 @@ test("stop 只给 eventId 时移除整个事件，回到基线", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
-    targets: [{ part: "nipple", intensity: 15 }],
+    targets: [{ part: "nipple", estimIntensity: 15 }],
   }));
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e1", sequence: 1,
-    targets: [{ part: "nipple", intensity: 90, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 90, durationMs: 60000 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 90, "事件期间 90");
@@ -871,7 +903,7 @@ test("stop_all 把所有音量写零并推给输出 Job", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
-    targets: [{ part: "nipple", intensity: 70, frequency: 50 }],
+    targets: [{ part: "nipple", estimIntensity: 70, frequency: 50 }],
   }));
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "r", sequence: 1,
@@ -892,7 +924,7 @@ test("stop_all 之后 tick 不会恢复任何输出", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
-    targets: [{ part: "nipple", intensity: 80, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 80, durationMs: 60000 }],
   }));
   host.call.tick();
   host.call.handle(envelope({ protocolVersion: 1, command: "stop_all", source: "s" }));
@@ -906,7 +938,7 @@ test("脚本停止函数把所有音量写零（Final Actions 的 JS 部分）",
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
-    targets: [{ part: "nipple", intensity: 80, frequency: 60, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 80, frequency: 60, durationMs: 60000 }],
   }));
   host.call.tick();
   assertEqual(host.call.stopAll(), "stopped", "应返回 stopped");
@@ -920,7 +952,7 @@ test("停止后 tick 不再驱动输出", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
-    targets: [{ part: "nipple", intensity: 80, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 80, durationMs: 60000 }],
   }));
   host.call.tick();
   host.call.stopAll();
@@ -938,13 +970,13 @@ test("日志与变量名不声称设备已确认", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
-    targets: [{ part: "nipple", intensity: 80, durationMs: 1000 }],
+    targets: [{ part: "nipple", estimIntensity: 80, durationMs: 1000 }],
   }));
   host.call.tick();
   host.call.handle(envelope({ protocolVersion: 1, command: "stop_all", source: "s" }));
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "x", sequence: 1,
-    targets: [{ part: "tentacle", intensity: 10, durationMs: 1000 }],
+    targets: [{ part: "tentacle", estimIntensity: 10, durationMs: 1000 }],
   }));
   host.call.tick();
   const haystack = host.state.logs.join("\n") + "\n" + Object.keys(host.state.variables).join("\n");
@@ -959,7 +991,7 @@ test("stop_all 在宿主 API 抛异常时仍然把所有音量写零并如实返
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
-    targets: [{ part: "nipple", intensity: 80, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 80, durationMs: 60000 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 80, "前置：有非零输出");
@@ -992,7 +1024,7 @@ test("停止函数在宿主抛异常时也不中断归零", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
-    targets: [{ part: "nipple", intensity: 80, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 80, durationMs: 60000 }],
   }));
   host.call.tick();
   host.call.injectFault({ failAllCallActions: true });
@@ -1012,7 +1044,7 @@ test("指标级忽略会留痕（部位有，但没有该类 Block）", () => {
   const before = h.V("xthb-ignored-count") || 0;
   h.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
-    targets: [{ part: "vagina", intensity: 30, frequency: 70, rotateSpeed: 20,
+    targets: [{ part: "vagina", estimIntensity: 30, frequency: 70, rotateSpeed: 20,
       rotateDirection: "clockwise", durationMs: 60000 }],
   }));
   h.call.tick();
@@ -1027,7 +1059,7 @@ test("同一问题不重复计数（忽略计数按事件而不是按 tick）", 
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
-    targets: [{ part: "tentacle", intensity: 40, durationMs: 60000 }],
+    targets: [{ part: "tentacle", estimIntensity: 40, durationMs: 60000 }],
   }));
   host.call.tick();
   const after1 = host.V("xthb-ignored-count");
@@ -1040,7 +1072,7 @@ test("短暂事件的忽略也会留痕（不能因为到期就消失）", () =>
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "short", sequence: 1,
-    targets: [{ part: "tentacle", intensity: 40, durationMs: 50 }],
+    targets: [{ part: "tentacle", estimIntensity: 40, durationMs: 50 }],
   }));
   /* 事件在下一次 tick 之前就到期了。 */
   host.testDate.current += 200;
@@ -1054,7 +1086,7 @@ test("只有 frequency 的意图会真正改变频率，且不把音量拽到 0"
   /* 先建立一个强度基线。 */
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
-    targets: [{ part: "nipple", intensity: 55 }],
+    targets: [{ part: "nipple", estimIntensity: 55 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 55, "前置：强度已输出");
@@ -1084,7 +1116,7 @@ test("被拒绝的 stop 不得改变状态", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
-    targets: [{ part: "nipple", intensity: 70, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 70, durationMs: 60000 }],
   }));
   host.call.tick();
   /* 该事件里没有 clitoris，只停 clitoris 应当失败，并且不能动这个事件。 */
@@ -1111,8 +1143,8 @@ test("每个部位各自到期：短事件不被长事件拖着继续输出", ()
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "mixed", sequence: 1,
     targets: [
-      { part: "nipple", intensity: 90, durationMs: 200 },
-      { part: "clitoris", intensity: 20, durationMs: 5000 },
+      { part: "nipple", estimIntensity: 90, durationMs: 200 },
+      { part: "clitoris", estimIntensity: 20, durationMs: 5000 },
     ],
   }));
   host.call.tick();
@@ -1130,7 +1162,7 @@ test("test 命令不带 sequence 也合法（docs/02 §5 的示例形状）", ()
   const host = bootHost();
   const result = host.call.handle(envelope({
     protocolVersion: 1, command: "test", source: "s",
-    targets: [{ part: "nipple", intensity: 50 }],
+    targets: [{ part: "nipple", estimIntensity: 50 }],
   }));
   assertEqual(result, { ok: true, code: "validated" }, "test 不应要求 sequence");
   assertEqual(host.pushCount(), 9, "test 仍不得驱动硬件");
@@ -1140,12 +1172,12 @@ test("source / eventId 里的控制字符被拒绝（避免身份碰撞）", () 
   const host = bootHost();
   const bad = host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "a\u0000b", eventId: "c", sequence: 1,
-    targets: [{ part: "nipple", intensity: 50, durationMs: 1000 }],
+    targets: [{ part: "nipple", estimIntensity: 50, durationMs: 1000 }],
   }));
   assertEqual(bad.ok, false, "source 含控制字符应被拒绝");
   const bad2 = host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "a", eventId: "b\u0000c", sequence: 1,
-    targets: [{ part: "nipple", intensity: 50, durationMs: 1000 }],
+    targets: [{ part: "nipple", estimIntensity: 50, durationMs: 1000 }],
   }));
   assertEqual(bad2.ok, false, "eventId 含控制字符应被拒绝");
 });
@@ -1154,7 +1186,7 @@ test("过期事件的序号栅栏保留：重放旧 sequence 不会重复刺激"
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 7,
-    targets: [{ part: "nipple", intensity: 80, durationMs: 200 }],
+    targets: [{ part: "nipple", estimIntensity: 80, durationMs: 200 }],
   }));
   host.call.tick();
   /* 等它完全到期。 */
@@ -1164,7 +1196,7 @@ test("过期事件的序号栅栏保留：重放旧 sequence 不会重复刺激"
   /* 重放同一个旧 sequence（模拟 webhook 重试）。 */
   const replay = host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 7,
-    targets: [{ part: "nipple", intensity: 80, durationMs: 200 }],
+    targets: [{ part: "nipple", estimIntensity: 80, durationMs: 200 }],
   }));
   assertEqual(replay.ok, false, "重放旧 sequence 必须被拒绝");
   assertEqual(replay.code, "invalid_sequence", "错误码应为 invalid_sequence");
@@ -1176,14 +1208,14 @@ test("更大的 sequence 仍可替换已过期的事件", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 7,
-    targets: [{ part: "nipple", intensity: 80, durationMs: 200 }],
+    targets: [{ part: "nipple", estimIntensity: 80, durationMs: 200 }],
   }));
   host.call.tick();
   host.testDate.current += 1000;
   host.call.tick();
   const fresh = host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 8,
-    targets: [{ part: "nipple", intensity: 60, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 60, durationMs: 60000 }],
   }));
   assertEqual(fresh.ok, true, "更大 sequence 应被接受");
   host.call.tick();
@@ -1214,7 +1246,7 @@ test("启动时配置不可读，后续 tick 自动补读并恢复（真机踩�
   /* 补读之后 webhook 必须恢复正常。 */
   const accepted = host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
-    targets: [{ part: "nipple", intensity: 40 }],
+    targets: [{ part: "nipple", estimIntensity: 40 }],
   }));
   assertEqual(accepted.ok, true, "补读后 webhook 必须恢复正常");
   host.call.tick();
@@ -1280,7 +1312,7 @@ test("即使 Script 变量里的配置被打坏，注入路仍能正常驱动输
 
   const accepted = host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
-    targets: [{ part: "nipple", intensity: 70, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 70, durationMs: 60000 }],
   }));
   assertEqual(accepted.ok, true, "webhook 必须被正常接受（真机故障时这里是 invalid_config）");
   host.call.tick();
@@ -1323,7 +1355,7 @@ test("紧凑配置能真正派生出正确数量的 Block 并驱动输出", () =
   assertEqual(host.call.raw("xthbBlocks.length"), 3, "nipple 应派生 3 个 Block");
   const accepted = host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
-    targets: [{ part: "nipple", intensity: 45 }],
+    targets: [{ part: "nipple", estimIntensity: 45, vibrateIntensity: 45 }],
   }));
   assertEqual(accepted.ok, true, "应接受载荷");
   host.call.tick();
@@ -1381,7 +1413,7 @@ test("直接给【内层协议对象】也能处理（真机上注入的就是�
   const host = bootHost();
   const result = host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "acceptance", sequence: 1,
-    targets: [{ part: "nipple", intensity: 15, frequency: 30, rampUpMs: 800 }],
+    targets: [{ part: "nipple", estimIntensity: 15, frequency: 30, rampUpMs: 800 }],
   }));
   assertEqual(result.ok, true, "内层对象应被接受");
 });
@@ -1390,7 +1422,7 @@ test("把【内层对象本身】当字符串传入也能处理（真机日志�
   const host = bootHost();
   /* 真机日志里 payload 变量的值就是这段文本（不含外层封装）。 */
   const innerText = JSON.stringify({
-    targets: [{ part: "nipple", intensity: 15, frequency: 30, rampUpMs: 800 }],
+    targets: [{ part: "nipple", estimIntensity: 15, frequency: 30, rampUpMs: 800 }],
     source: "acceptance", sequence: 1, protocolVersion: 1, command: "set_baseline",
   });
   const result = host.call.handle(innerText);
@@ -1404,7 +1436,7 @@ test("对象型载荷（宿主直接给对象）也能处理", () => {
   const host = bootHost();
   const result = host.call.handle({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
-    targets: [{ part: "nipple", intensity: 42, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 42, durationMs: 60000 }],
   });
   assertEqual(result.ok, true, "对象型载荷应被接受");
   host.call.tick();
@@ -1415,7 +1447,7 @@ test("协议 §1 的外层封装仍然照常支持（手工 curl 测试用）", 
   const host = bootHost();
   const result = host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
-    targets: [{ part: "nipple", intensity: 33, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 33, durationMs: 60000 }],
   }));
   assertEqual(result.ok, true, "外层封装必须继续可用");
   host.call.tick();
@@ -1427,7 +1459,7 @@ test("payload 已被求值成对象的外层封装也能处理", () => {
   const payload = JSON.stringify({
     action: "xtoys_game_bridge",
     payload: { protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
-      targets: [{ part: "nipple", intensity: 27, durationMs: 60000 }] },
+      targets: [{ part: "nipple", estimIntensity: 27, durationMs: 60000 }] },
   });
   assertEqual(host.call.handle(payload).ok, true, "payload 为对象时也应接受");
   host.call.tick();
@@ -1476,7 +1508,7 @@ test("每次命令的日志是简短摘要，不含整段原文", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "acceptance", sequence: 1,
-    targets: [{ part: "nipple", intensity: 15, frequency: 30, rampUpMs: 800 }],
+    targets: [{ part: "nipple", estimIntensity: 15, frequency: 30, rampUpMs: 800 }],
   }));
   const line = host.state.logs.find((l) => l.includes("收到"));
   assert(line, "应有'收到'日志");
@@ -1493,12 +1525,13 @@ test("frequency-only 的 set_baseline 不会驱动 vibrate（真机同步现象�
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "acceptance", sequence: 1,
-    targets: [{ part: "nipple", intensity: 15, frequency: 30, rampUpMs: 800 }],
+    targets: [{ part: "nipple", estimIntensity: 15, frequency: 30, rampUpMs: 800 }],
   }));
   host.call.tick();
-  /* 该命令带了 intensity=15，所以 estim 与 vibrate 都应输出 15 —— 这是设计如此。 */
+  /* 步骤 1 的载荷只带 estimIntensity，所以只有 estim 动；vibrate 必须保持 0。
+   * （2026-10-05 拆分前这里会是 15 —— 那正是用户要求分开的原因。） */
   assertEqual(host.V(VOL.estimNipple), 15, "estim 应输出 15");
-  assertEqual(host.V(VOL.vibrateNipple), 15, "vibrate 同样输出 15（设计：intensity 驱动两者）");
+  assertEqual(host.V(VOL.vibrateNipple), 0, "只给 estimIntensity 时 vibrate 必须为 0");
   assertEqual(host.V(FREQ_NIPPLE), 30, "频率应精确写入 30");
 });
 
@@ -1508,7 +1541,7 @@ test("同一 tick 内第二次询问同一 (part,metric) 结果一致", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
-    targets: [{ part: "nipple", intensity: 55, durationMs: 60000 }],
+    targets: [{ part: "nipple", estimIntensity: 55, durationMs: 60000 }],
   }));
   host.call.tick();
   /* estim 的强度与频率两个维度都会收集一次候选，缓存必须让两次结果一致。 */
@@ -1520,13 +1553,13 @@ test("状态变化后缓存失效：新事件立刻反映到输出", () => {
   host.call.tick();
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
-    targets: [{ part: "nipple", intensity: 40 }],
+    targets: [{ part: "nipple", estimIntensity: 40 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 40, "新基线必须立刻生效（缓存不得返回空候选）");
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 2,
-    targets: [{ part: "nipple", intensity: 20 }],
+    targets: [{ part: "nipple", estimIntensity: 20 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 20, "第二次更新也必须生效");
@@ -1536,7 +1569,7 @@ test("stop_all 后缓存失效：归零必须立刻反映", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
-    targets: [{ part: "nipple", intensity: 60 }],
+    targets: [{ part: "nipple", estimIntensity: 60 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 60, "前置：有输出");
@@ -1548,11 +1581,11 @@ test("事件到期后缓存失效：回落必须立刻反映", () => {
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "s", sequence: 1,
-    targets: [{ part: "nipple", intensity: 10 }],
+    targets: [{ part: "nipple", estimIntensity: 10 }],
   }));
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
-    targets: [{ part: "nipple", intensity: 90, durationMs: 200 }],
+    targets: [{ part: "nipple", estimIntensity: 90, durationMs: 200 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 90, "前置：事件期间 90");
@@ -1573,7 +1606,7 @@ test("同强度新事件确实重推了 Job，但写入的目标值与当前相�
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "acceptance", sequence: 1,
-    targets: [{ part: "nipple", intensity: 15, frequency: 30, rampUpMs: 800 }],
+    targets: [{ part: "nipple", estimIntensity: 15, frequency: 30, rampUpMs: 800 }],
   }));
   host.call.tick();
   const afterBaseline = host.pushCount();
@@ -1581,7 +1614,7 @@ test("同强度新事件确实重推了 Job，但写入的目标值与当前相�
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "acceptance", eventId: "acc-retrigger",
     sequence: 1,
-    targets: [{ part: "nipple", intensity: 15, frequency: 30, durationMs: 900, rampUpMs: 300, rampDownMs: 300 }],
+    targets: [{ part: "nipple", estimIntensity: 15, frequency: 30, durationMs: 900, rampUpMs: 300, rampDownMs: 300 }],
   }));
   host.call.tick();
   assert(host.pushCount() > afterBaseline,
@@ -1598,7 +1631,7 @@ test("事件之间回到 0 时，同强度重推是可见的（这才是重推�
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "acceptance", eventId: "hit1", sequence: 1,
-    targets: [{ part: "nipple", intensity: 40, durationMs: 200, rampUpMs: 300 }],
+    targets: [{ part: "nipple", estimIntensity: 40, durationMs: 200, rampUpMs: 300 }],
   }));
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 40, "第一击输出 40");
@@ -1609,7 +1642,7 @@ test("事件之间回到 0 时，同强度重推是可见的（这才是重推�
   const before = host.pushCount();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "acceptance", eventId: "hit2", sequence: 1,
-    targets: [{ part: "nipple", intensity: 40, durationMs: 200, rampUpMs: 300 }],
+    targets: [{ part: "nipple", estimIntensity: 40, durationMs: 200, rampUpMs: 300 }],
   }));
   host.call.tick();
   assert(host.pushCount() > before, "第二击必须重新推一次（0 → 40，脉冲可见）");

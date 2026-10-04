@@ -176,7 +176,7 @@ tick 计算所需的最小状态（`HANDOFF.md` §7.2：只有这三样）：
 
 ```
 xthbEvents      : { "<source>\u0000<eventId>" → { source, eventId, sequence, parts, finishAtMs } }
-                  parts = { <part> → 意图 }   意图 = { intensity?, frequency?, rotateSpeed?, rotateDirection?, priority? }
+                  parts = { <part> → 意图 }   意图 = { estimIntensity?, vibrateIntensity?, frequency?, rotateSpeed?, rotateDirection?, priority? }
                   身份 = source+eventId；只有严格更大的 sequence 才替换整个目标集
 
 xthbBaselines   : { <source> → { sequence, parts } }   基线是【完整快照】，不是叠加
@@ -253,7 +253,7 @@ xthbWritten     : { <channel> → { value, frequency, rampSeconds, driveId } }
 ```json
 {
   "action": "xtoys_game_bridge",
-  "payload": "{\"protocolVersion\":1,\"command\":\"play\",\"source\":\"repetition\",\"eventId\":\"hit-0042\",\"sequence\":17,\"targets\":[{\"part\":\"nipple\",\"intensity\":65,\"frequency\":40,\"rotateSpeed\":50,\"rotateDirection\":\"clockwise\",\"durationMs\":900,\"rampUpMs\":120,\"rampDownMs\":180,\"priority\":10}]}"
+  "payload": "{\"protocolVersion\":1,\"command\":\"play\",\"source\":\"repetition\",\"eventId\":\"hit-0042\",\"sequence\":17,\"targets\":[{\"part\":\"nipple\",\"estimIntensity\":65,\"vibrateIntensity\":30,\"frequency\":40,\"rotateSpeed\":50,\"rotateDirection\":\"clockwise\",\"durationMs\":900,\"rampUpMs\":120,\"rampDownMs\":180,\"priority\":10}]}"
 }
 ```
 
@@ -263,13 +263,13 @@ xthbWritten     : { <channel> → { value, frequency, rampSeconds, driveId } }
 2. 校验通过 → 事件表写入 `repetition\u0000hit-0042`，`finishAtMs = now + 900`。
 3. 下一个 tick（≤100 ms 后）：
    - `nipple` 有 3 个 Block：`Estim-nipple` / `Vibrate-nipple` / `Rotate-nipple`。
-   - 三条指标各自分派：`intensity=65` → 前两个，`frequency=40` → `Estim-nipple`，
-     `rotateSpeed=50` + 方向 → `Rotate-nipple`。
+   - 各指标分派：`estimIntensity=65` → `Estim-nipple`，`vibrateIntensity=30` → `Vibrate-nipple`，
+     `frequency=40` → `Estim-nipple`，`rotateSpeed=50` + 方向 → `Rotate-nipple`。
    - 仲裁（与其他来源/基线比 priority/数值/sequence）后得出各自的值。
 4. 值有变化 → 写 7 个输出变量 → 启动 3 个输出 Job。
 5. 三个输出 Job 各自写硬件后停自己：
    - `Estim-nipple`：`setVolume 65` + `setFrequency 40`
-   - `Vibrate-nipple`：`setVolume 65`
+   - `Vibrate-nipple`：`setVolume 30`
    - `Rotate-nipple`：`setDirection clockwise` → `setVolume 50`
 6. 900 ms 后该事件被 tick 清掉；若该 `nipple` 有基线则回落到基线值，否则归零。
 

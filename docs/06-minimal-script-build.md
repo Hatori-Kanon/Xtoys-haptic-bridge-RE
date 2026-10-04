@@ -169,13 +169,14 @@ pwsh -File tools/Invoke-XtoysAcceptance.ps1 -SkipUnverifiable
 | --- | --- | --- |
 | 1 | `set_baseline` nipple estim 15 | E-Stim 出现**低强度**持续输出（先确认安全数值！） |
 | 2 | `set_baseline` nipple vibrate 25 | 振动器持续振动 |
-| 3 | `play` nipple intensity 60 / 900ms | 在基线上叠加一次短暂增强，**约 1 秒后回到基线**（不是归零） |
-| 4 | `play` nipple 同强度再来一次 | **每次都有一次重新渐入**（不是"第二次没反应"）——验推送判据里的 driveId |
+| 3 | `play` nipple estimIntensity 60 / 900ms | 在基线上叠加一次短暂增强，**约 1 秒后回到基线**（不是归零） |
+| 4 | `play` nipple 同强度再来一次 | 运行时**确实**重新驱动了一次；但因为当前强度已经是该值，**体感上可能看不出变化**（正常）——验推送判据里的 driveId |
+| 4b | 连发两击、强度相同、之间回落到 0 | **两次独立、可辨的渐入脉冲** —— 这才是重推的可感知场景 |
 | 5 | `play` nipple frequency 70 | E-Stim **频率**变化，强度不受影响 |
 | 6 | `play` nipple 不带 frequency | 强度变化，**频率保持步骤 5 的值不变**（不是被归零）——验频率缺省语义 |
 | 7 | 发 `rotateSpeed`（需旋转器） | ⚠️ **本轮无法验证**，脚本会标记为跳过 |
 | 8 | 反向 `update` | 方向立刻改变，无中间停顿（需旋转器；本轮跳转） |
-| 9 | 分辨率 `intensity` 0–100 边界 | 低强度确认一次 | 
+| 9 | 多部位独立（nipple + clitoris 各给不同强度） | 两个部位各自输出自己的值，互不影响 | 
 | 10 | `stop_all` | **所有输出立刻归零** |
 | 11 | 手动停 Script | 所有输出归零（Final Actions 兜底） |
 | 12 | 发畸形载荷 / 未知部位 / 重复部位 | 脚本日志出现 rejected / ignored，**设备无反应** |

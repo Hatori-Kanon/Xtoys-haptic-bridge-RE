@@ -16,8 +16,8 @@
 
 /*
  * metric 与 Channel type 的对应（docs/03 §2.2）：
- *   estim   → part-estim     消费 intensity + frequency
- *   vibrate → part-vibrator  消费 intensity（永不消费 frequency）
+ *   estim   → part-estim     消费 estimIntensity + frequency
+ *   vibrate → part-vibrator  消费 vibrateIntensity（永不消费 frequency）
  *   rotate  → part-rotator   消费 rotateSpeed + 方向
  *
  * 本阶段 9 个 Block = 4 部位 (nipple / clitoris / vagina / anus) × (estim + vibrate)，

@@ -269,9 +269,9 @@ pwsh -File tools/Invoke-XtoysAcceptance.ps1 -SkipUnverifiable   # 跳过需旋�
 
 | 步骤 | 载荷 | 输出电压 | 能否看到脉冲 |
 | --- | --- | --- | --- |
-| 步骤 1 | `set_baseline intensity:15` | 稳定 15 | — |
-| 步骤 3 | `play intensity:60` | 15 → **60** → 回 15 | ✅ 值变了 |
-| 步骤 4 | `play intensity:15` | 15 → **15**（不变） | ❌ 电流本来就在 15 |
+| 步骤 1 | `set_baseline estimIntensity:15` | 稳定 15 | — |
+| 步骤 3 | `play estimIntensity:60` | 15 → **60** → 回 15 | ✅ 值变了 |
+| 步骤 4 | `play estimIntensity:15` | 15 → **15**（不变） | ❌ 电流本来就在 15 |
 
 **`setVolume` 把音量设为"已经是的那个值"时，设备不会产生可感知的变化。**
 所以步骤 4 的载荷**恰好无法体现重推机制** —— 这是我的测试设计问题。
@@ -316,7 +316,7 @@ pwsh -File tools/Invoke-XtoysAcceptance.ps1 -SkipUnverifiable   # 跳过需旋�
 
 **a) vibrate 与 estim 同步 —— 这是设计如此，不是缺陷。**
 `docs/03` §6.2 定的规则就是「`intensity` 同时驱动该部位的 estim + vibrate Block」。
-步骤 1 的载荷带 `intensity: 15`，所以 `Estim-nipple` 与 `Vibrate-nipple` 都输出 15。
+步骤 1 的载荷带 `intensity: 15`（当时协议还是一个字段），所以 `Estim-nipple` 与 `Vibrate-nipple` 都输出 15。**这一条促成了 2026-10-05 的协议拆分：`intensity` 现已拆成 `estimIntensity` / `vibrateIntensity`。**
 **要让两者不同步，在 UI 里不给对应的 Block 绑设备即可** —— 那是接线选择，
 不需要改协议或代码。运行时侧已用测试锁住这个行为（见 §2 的测试 16）。
 

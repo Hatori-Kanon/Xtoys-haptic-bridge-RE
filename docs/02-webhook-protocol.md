@@ -57,9 +57,10 @@ Webhook POST 到 `https://webhook.xtoys.app/<Webhook ID>`，`Content-Type: appli
 | 字段 | 类型 / 默认 | 说明 |
 | --- | --- | --- |
 | `part` | string，必填 | 逻辑部位，见 §4 |
-| `intensity` | number，默认 0，夹 0–100 | 强度槽目标值。字段缺失则不驱动强度槽 |
-| `frequency` | number，默认 0，夹 0–100 | 仅频率已开启的 E-Stim 槽使用；其他槽忽略 |
-| `rotateSpeed` | number，可选，夹 0–100 | 旋转槽速度，**不从 intensity 推导** |
+| `estimIntensity` | number，可选，夹 0–100 | **estim（E-Stim）通道**强度目标值。缺失则不驱动 estim 音量 |
+| `vibrateIntensity` | number，可选，夹 0–100 | **vibrate（振动）通道**强度目标值。缺失则不驱动 vibrate 音量 |
+| `frequency` | number，可选，夹 0–100 | 仅 estim 通道的频率；**`vibrate` 永不消费频率**。缺失 = 保持设备当前频率（见 §3.1） |
+| `rotateSpeed` | number，可选，夹 0–100 | 旋转槽速度，**不从任何强度字段推导** |
 | `rotateDirection` | `clockwise` / `counterclockwise` | `rotateSpeed > 0` 时必填；**只能由游戏显式发送** |
 | `durationMs` | number | 有限事件总时长；`play`/`update` 必须有正值 |
 | `rampUpMs` | number，默认 0 | 数值升高时的渐入时间 |
@@ -68,19 +69,34 @@ Webhook POST 到 `https://webhook.xtoys.app/<Webhook ID>`，`Content-Type: appli
 
 所有数值必须是有限数。协议**不控制**设备最大强度与最大旋转速度 —— 那始终是用户在 XToys 设备设置里的选择。
 
+> ⚠️ **`intensity` 这个字段已废除（2026-10-05）。** 早期版本用一个 `intensity` 同时驱动
+> estim 与 vibrate 两条通道。为了让**同一部位同时使用 E-Stim 与振动**的双模设备能被分别控制，
+> 改为两个显式字段：`estimIntensity` / `vibrateIntensity`。**不再有兼容的 `intensity` 别名**
+> —— 发 `intensity` 会被当成"没有驱动指标"而整体拒绝（这是有意的：静默忽略会让游戏侧
+> 以为生效了）。
+
 **一个部位在一个 `targets` 数组里只出现一次。** 该部位的所有指标合并在同一条 target 里；
-同一部位重复出现是非法写法，整体拒绝。三条指标**各自独立判断**，没有主次或门控关系：
+同一部位重复出现是非法写法，整体拒绝。各指标**各自独立判断**，没有主次或门控关系：
 
 | 指标 | 驱动什么 | 该部位没有对应 Block 时 |
 | --- | --- | --- |
-| `intensity` | 该部位的 estim + vibrate 输出 | 忽略并留痕 |
-| `frequency` | 该部位的 estim 输出（`vibrate` 永不消费频率） | 忽略并留痕 |
+| `estimIntensity` | 该部位的 estim 输出 | 忽略并留痕 |
+| `vibrateIntensity` | 该部位的 vibrate 输出 | 忽略并留痕 |
+| `frequency` | 该部位的 estim 输出（频率维度） | 忽略并留痕 |
 | `rotateSpeed` + `rotateDirection` | 该部位的 rotate 输出 | 忽略并留痕 |
 
 - **纯 rotate 的 target 合法**（游戏侧的"只走某几种方式"开关会产生它）。
 - `rotateSpeed > 0` 必须给 `rotateDirection`；`rotateSpeed == 0` 表示停止旋转，方向可省。
-- 一条 target 若**连一个驱动指标都没有**（`intensity` / `frequency` / `rotateSpeed` 全缺，
-  含只带 `rotateDirection` 的情况）→ 整体拒绝。
+- 一条 target 若**连一个驱动指标都没有**（`estimIntensity` / `vibrateIntensity` /
+  `frequency` / `rotateSpeed` 全缺，含只带 `rotateDirection` 的情况）→ 整体拒绝。
+
+### 3.1 `frequency` 的语义（含真机实测的刻度说明）
+
+- **缺省 = 保持设备当前频率**，不是置零。见 `docs/03-protocol-mapping.md` §4.5。
+- `frequency` 是**百分比（0–100）**，映射到设备自身的频率范围。
+  ✅ **真机实测（2026-10-05）**：XToys 的默认频率范围是 **10–100**，所以
+  `frequency: 30` 在设备上落在 `10 + 30% × 90 ≈ 37` —— 读数 37 是**正确**的，
+  不是偏差。**写 0 会落在范围下限 10（最低频），而不是"关闭频率"。**
 
 完整规则（忽略、拒绝、留痕的边界）见 **`docs/03-protocol-mapping.md`** §6.2 / §6.5。
 
@@ -111,7 +127,7 @@ Webhook POST 到 `https://webhook.xtoys.app/<Webhook ID>`，`Content-Type: appli
 ```json
 {
   "action": "xtoys_game_bridge",
-  "payload": "{\"protocolVersion\":1,\"command\":\"play\",\"source\":\"my-game\",\"eventId\":\"hit-0001\",\"sequence\":1,\"targets\":[{\"part\":\"clitoris\",\"intensity\":65,\"frequency\":40,\"durationMs\":900,\"rampUpMs\":120,\"rampDownMs\":180,\"priority\":10}]}"
+  "payload": "{\"protocolVersion\":1,\"command\":\"play\",\"source\":\"my-game\",\"eventId\":\"hit-0001\",\"sequence\":1,\"targets\":[{\"part\":\"clitoris\",\"estimIntensity\":65,\"vibrateIntensity\":30,\"frequency\":40,\"durationMs\":900,\"rampUpMs\":120,\"rampDownMs\":180,\"priority\":10}]}"
 }
 ```
 
@@ -146,7 +162,7 @@ Webhook POST 到 `https://webhook.xtoys.app/<Webhook ID>`，`Content-Type: appli
 ```json
 {
   "action": "xtoys_game_bridge",
-  "payload": "{\"protocolVersion\":1,\"command\":\"set_baseline\",\"source\":\"my-game\",\"sequence\":5,\"targets\":[{\"part\":\"clitoris\",\"intensity\":25,\"frequency\":20,\"rampUpMs\":500,\"rampDownMs\":500}]}"
+  "payload": "{\"protocolVersion\":1,\"command\":\"set_baseline\",\"source\":\"my-game\",\"sequence\":5,\"targets\":[{\"part\":\"clitoris\",\"estimIntensity\":25,\"frequency\":20,\"rampUpMs\":500,\"rampDownMs\":500}]}"
 }
 ```
 
@@ -177,7 +193,7 @@ Webhook POST 到 `https://webhook.xtoys.app/<Webhook ID>`，`Content-Type: appli
 ```json
 {
   "action": "xtoys_game_bridge",
-  "payload": "{\"protocolVersion\":1,\"command\":\"test\",\"source\":\"my-game\",\"targets\":[{\"part\":\"clitoris\",\"intensity\":50}]}"
+  "payload": "{\"protocolVersion\":1,\"command\":\"test\",\"source\":\"my-game\",\"targets\":[{\"part\":\"clitoris\",\"estimIntensity\":50}]}"
 }
 ```
 

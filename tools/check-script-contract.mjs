@@ -103,16 +103,20 @@ const send = (inner) => {
 
 check("xtoysBridgeInit() 返回 initialized", call("xtoysBridgeInit()") === "initialized");
 
-/* 尽可能把每条路径都激活一次：三条指标 + 有/无频率 + 方向 + 到期 + 停止。 */
+/* 尽可能把每条路径都激活一次：两个强度字段 + 有/无频率 + 方向 + 到期 + 停止。 */
 const parts = Object.keys(JSON.parse(configAction.value).parts);
 for (const part of parts) {
   const spec = JSON.parse(configAction.value).parts[part];
+  /* 配置可能是紧凑版（metric 数组）或完整版（metric → channelId）。 */
+  const metrics = Array.isArray(spec) ? spec : Object.keys(spec);
   const target = { part, durationMs: 60000 };
-  if (spec.estim || spec.vibrate) {
-    target.intensity = 55;
-    if (spec.estim) target.frequency = 35;
+  /* 强度按通道分开（2026-10-05 协议改动）：两个字段都要激活，否则会漏测一条通道。 */
+  if (metrics.includes("estim")) {
+    target.estimIntensity = 55;
+    target.frequency = 35;
   }
-  if (spec.rotate) {
+  if (metrics.includes("vibrate")) target.vibrateIntensity = 45;
+  if (metrics.includes("rotate")) {
     target.rotateSpeed = 40;
     target.rotateDirection = "clockwise";
   }
@@ -121,7 +125,7 @@ for (const part of parts) {
 }
 /* 无频率 + 反向 + 到期 + 停止，覆盖剩余的写入路径。 */
 send({ protocolVersion: 1, command: "set_baseline", source: "contract-b", sequence: 1,
-  targets: [{ part: parts[0], intensity: 20, rampUpMs: 500, rampDownMs: 900 }] });
+  targets: [{ part: parts[0], estimIntensity: 20, vibrateIntensity: 20, rampUpMs: 500, rampDownMs: 900 }] });
 call("xtoysBridgeTick()");
 send({ protocolVersion: 1, command: "stop_all", source: "contract" });
 call("xtoysBridgeStopAll()");
