@@ -134,6 +134,8 @@ var xthbLastIgnored = "";
 var xthbAuditSeen = {};
 /* tick 里"补读配置"的尝试次数（见 xtoysBridgeTick 的自愈分支）。 */
 var xthbTickCountForInit = 0;
+/* 本次初始化用的配置来自哪里（注入 / 回退读变量），以及它的类型与长度。 */
+var xthbInjectedInfo = "未知";
 
 /* =====================================================================
  * 3. 基础工具（全部 ES5）
@@ -343,20 +345,28 @@ function xthbNoteIgnored(detail) {
  * updateVariable 与 customCode 的先后顺序在 XToys 实际执行时不能保证，
  * init 就读不到配置；此时留到 tick 里用 getVariable 再读一次（见 xtoysBridgeTick）。
  */
-function xthbParseConfig(rawOverride) {
-  var raw = xthbIsNonEmptyString(rawOverride) ? rawOverride : XTHB_getVariable(XTHB_VAR_CONFIG);
+function xthbParseConfig(injected) {
+  var raw;
   var parsed;
 
-  if (!xthbIsNonEmptyString(raw)) {
-    /*
-     * 变量不是字符串。真机上 updateVariable 有可能把值当对象/数字存，
-     * 那样它已经是一个可用对象，不必再 JSON.parse。这不是我们生成的形状，
-     * 但没必要为此让整个运行时停摆。
-     */
+  /*
+   * 注入值可能是字符串（JSON 文本）也可能是对象（XToys 直接求值/反序列化后）。
+   * 两种都接受 —— 真机上到底是哪种我们无法预先断定，没必要为此让运行时停摆。
+   */
+  if (injected !== undefined && injected !== null) {
+    if (typeof injected === "object" && !xthbIsArray(injected)) {
+      return xthbValidateConfig(injected);
+    }
+    raw = injected;
+  } else {
+    raw = XTHB_getVariable(XTHB_VAR_CONFIG);
     if (typeof raw === "object" && raw !== null && !xthbIsArray(raw)) {
       return xthbValidateConfig(raw);
     }
-    return { error: "配置变量 " + XTHB_VAR_CONFIG + " 未设置或类型不支持（读到 " + xthbPreview(String(raw)) + "）" };
+  }
+
+  if (!xthbIsNonEmptyString(raw)) {
+    return { error: "配置未就绪或类型不支持（读到 " + xthbPreview(String(raw)) + "）" };
   }
   /* 去掉 BOM 与首尾空白 —— 它们会让 JSON.parse 直接失败。 */
   raw = xthbTrimRaw(raw);
@@ -366,6 +376,7 @@ function xthbParseConfig(rawOverride) {
     /*
      * 把实际读到的内容打出来（截断 + 转义）。没有这一步，"配置不是合法 JSON"
      * 只能靠猜：到底是空值、被截断、还是被 XToys 改写过。
+     * 真机实测就是靠这条日志定位到"494 字符被打成 91 字符、值全变 undefined"的。
      */
     return { error: "配置不是合法 JSON（读到 " + raw.length + " 字符：" + xthbPreview(raw) + "）" };
   }
@@ -1258,8 +1269,30 @@ function safeCall(body) {
   }
 }
 
-function xtoysBridgeInit() {
-  var parsed = xthbParseConfig();
+/*
+ * 初始化。
+ *
+ * injectedConfig：Initial Actions 通过 customCode 的 variables 直接注入的配置。
+ *   ——这是【主路】，与触发器传 payload 用的是同一机制（真机已验证可用）。
+ * 没有注入值时才回退去读 Script 变量 xthb-config-json（备路 + tick 补读）。
+ *
+ * 真机实测教训（2026-09-30）：只靠 updateVariable 写变量、JS 再 getVariable 读回来，
+ * 在真机上读到的内容会被打坏（长度 494 → 91，值全变成 undefined），
+ * 于是初始化失败、运行时静默、所有 webhook 无反应。所以必须有一条不依赖它的路。
+ */
+function xtoysBridgeInit(injectedConfig) {
+  var quoted;
+  var parsed = xthbParseConfig(injectedConfig);
+
+  if (injectedConfig !== undefined && injectedConfig !== null) {
+    /* 诊断：把注入值的类型与长度打出来，便于真机上核对传值是否完整。 */
+    quoted = xthbIsNonEmptyString(injectedConfig)
+      ? injectedConfig
+      : (typeof injectedConfig === "object" ? JSON.stringify(injectedConfig) : String(injectedConfig));
+    xthbInjectedInfo = (typeof injectedConfig) + "/" + (quoted ? quoted.length : 0) + "字符";
+  } else {
+    xthbInjectedInfo = "未注入（回退读变量）";
+  }
 
   xthbEvents = {};
   xthbBaselines = {};
@@ -1294,7 +1327,8 @@ function xtoysBridgeInit() {
   /* 第一次 tick 强推一次全零，确保输出 Job 真的把零写出去。 */
   xthbForcePush = true;
   XTHB_setVariable("xthb-status", "running");
-  xthbLog("初始化完成：部位 " + xthbCountParts() + " 个，Block " + xthbBlocks.length + " 个");
+  xthbLog("初始化完成：部位 " + xthbCountParts() + " 个，Block " + xthbBlocks.length +
+    " 个（配置来源：" + xthbInjectedInfo + "）");
   return "initialized";
 }
 

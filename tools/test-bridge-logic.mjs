@@ -1247,6 +1247,61 @@ test("配置值带 BOM / 首尾空白时仍能解析", () => {
   assertEqual(host.call.init(), "initialized", "BOM 与首尾空白应被容忍");
 });
 
+section("13. 真机实测回归：配置注入（主路）");
+
+test("注入的配置对象可以直接初始化（不读 Script 变量）", () => {
+  /* 真机实测：updateVariable 写进变量再读回来，内容被打坏
+   * （494 字符 → 91 字符、值全变 undefined）。所以主路改成直接注入。 */
+  const host = createMockHost(); /* 注意：没有设置 xthb-config-json */
+  const result = host.call.raw(`xtoysBridgeInit(${JSON.stringify(bridgeConfig())});`);
+  assertEqual(result, "initialized", "注入对象应能直接完成初始化");
+  assert(host.call.raw("xthbInjectedInfo").includes("object"), "应记录注入值类型");
+});
+
+test("注入的配置字符串（JSON 文本）可以初始化", () => {
+  const host = createMockHost();
+  const json = JSON.stringify(bridgeConfig());
+  const result = host.call.raw(`xtoysBridgeInit(${JSON.stringify(json)});`);
+  assertEqual(result, "initialized", "注入 JSON 文本应能完成初始化");
+  assert(host.call.raw("xthbInjectedInfo").includes("string"), "应记录注入值类型");
+});
+
+test("即使 Script 变量里的配置被打坏，注入路仍能正常驱动输出", () => {
+  /*
+   * 精确复现真机故障：变量里是一段被破坏的内容（长度、值都坏了）。
+   * 有了注入路，运行时必须照常工作。
+   */
+  const host = createMockHost();
+  host.state.variables["xthb-config-json"] =
+    '"undefined,"clitoris":undefined,"vagina":undefined,"anus":undefined},"frequencySentinel":-1}';
+
+  host.call.raw(`xtoysBridgeInit(${JSON.stringify(bridgeConfig())});`);
+  assertEqual(host.V("xthb-status"), "running", "注入成功即应进入 running");
+
+  const accepted = host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
+    targets: [{ part: "nipple", intensity: 70, durationMs: 60000 }],
+  }));
+  assertEqual(accepted.ok, true, "webhook 必须被正常接受（真机故障时这里是 invalid_config）");
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 70, "必须真的驱动输出");
+});
+
+test("没有注入值时回退读变量（备路仍然有效）", () => {
+  const host = createMockHost();
+  host.state.variables["xthb-config-json"] = JSON.stringify(bridgeConfig());
+  assertEqual(host.call.init(), "initialized", "不注入时应回退到读变量");
+  assert(host.call.raw("xthbInjectedInfo").includes("回退"), "应标记为回退路径");
+});
+
+test("初始化日志会写明配置来源与长度（便于真机核对传值完整性）", () => {
+  const host = createMockHost();
+  host.call.raw(`xtoysBridgeInit(${JSON.stringify(bridgeConfig())});`);
+  const joined = host.state.logs.join("\n");
+  assert(joined.includes("配置来源"), "日志应包含配置来源");
+  assert(/object\/\d+字符/.test(joined), `日志应包含类型与长度，实际：${joined}`);
+});
+
 /* ============================================================== 汇总 */
 
 console.log(`\n${"-".repeat(64)}`);

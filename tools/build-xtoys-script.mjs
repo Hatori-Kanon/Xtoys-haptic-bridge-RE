@@ -168,11 +168,24 @@ function buildScript(runtimeSource) {
     jobs[block.outputJob] = buildOutputJob(block);
   }
 
-  /* ---- Initial Actions：归零音量 → 写配置 → 初始化 JS → 启动调度 ---- */
+  /* ---- Initial Actions：归零音量 → 写配置变量 → 初始化 JS → 启动调度 ---- */
   const initialActions = [];
   for (const block of BLOCKS) initialActions.push(...zeroBlockActions(block));
+
+  /*
+   * 配置走【两条路】，互为兜底。真机实测教训（2026-09-30）：
+   * 只靠 updateVariable 写进变量、再由 JS 用 getVariable 读回来，在真机上
+   * 读到的内容被打坏了（长度 494 → 91，且所有值变成 undefined），
+   * 导致初始化失败、运行时静默、所有 webhook 无反应。
+   *
+   * 主路：把配置【直接注入】 initial customCode 的 variables（与触发器传
+   *       payload 用的是同一机制，那个机制已被真机证明可用）。
+   * 备路：仍然 updateVariable 写一份到 Script 变量，供 tick 补读与诊断。
+   */
   initialActions.push(updateVariable("xthb-config-json", JSON.stringify(BRIDGE_CONFIG)));
-  initialActions.push(customCode("xtoysBridgeInit();"));
+  initialActions.push(customCode("xtoysBridgeInit(cfgJson);", [
+    { name: "cfgJson", value: BRIDGE_CONFIG, expression: null },
+  ]));
   initialActions.push(startJob(SCHEDULER_JOB));
 
   /*
