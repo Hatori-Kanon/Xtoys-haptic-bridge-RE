@@ -22,6 +22,8 @@
 
 - **怎么用**：看 [docs/06-minimal-script-build.md](docs/06-minimal-script-build.md)
   （导入、在 UI 绑定 Block、跑验收）。
+- **要写游戏侧插件**：看 **[docs/08-game-side-integration-guide.md](docs/08-game-side-integration-guide.md)**
+  —— 只读这一篇就能写出对接得上的游戏侧桥接。
 - **想知道为什么这么设计**：看 [docs/03-protocol-mapping.md](docs/03-protocol-mapping.md)
   与 [docs/04-architecture-flow.md](docs/04-architecture-flow.md)。
 - **想了解现状与待办**：看 [docs/07-stage0-status-and-todo.md](docs/07-stage0-status-and-todo.md)。
@@ -45,6 +47,7 @@
 | [docs/05-game-event-mappings.md](docs/05-game-event-mappings.md) | 各游戏事件映射 + probe 方法论 |
 | [docs/06-minimal-script-build.md](docs/06-minimal-script-build.md) | **怎么导入、绑定、验收**（阶段 0 交付说明） |
 | [docs/07-stage0-status-and-todo.md](docs/07-stage0-status-and-todo.md) | 当前状态、真机验收记录、剩余待办 |
+| [docs/08-game-side-integration-guide.md](docs/08-game-side-integration-guide.md) | **游戏侧插件编写指南**（要写游戏侧就读这一篇） |
 | [src/](src/) | ES5 运行时（被嵌入 Script 的 `customFunctions`） |
 | [tools/](tools/) | 生成器、契约检查、逻辑测试、真机验收脚本 |
 | [examples/](examples/) | `xtoys-minimal-3path.json` 是**要导入的那份** |
@@ -56,6 +59,7 @@
 npm run build      # 生成 examples/xtoys-minimal-3path.json（含 7 项结构自检）
 npm run test       # 105 项运行时逻辑测试（mock 宿主）
 npm run contract   # Script JSON ↔ 运行时 契约检查
+npm run guide      # docs/08 游戏侧指南 ↔ 运行时 规格一致性检查
 npm run verify     # = build && test && contract
 
 # 改完运行时后必须重新生成并【重新导入】到 XToys

@@ -8,7 +8,8 @@
     "build": "node tools/build-xtoys-script.mjs",
     "test": "node tools/test-bridge-logic.mjs",
     "contract": "node tools/check-script-contract.mjs",
-    "verify": "npm run build && npm run test && npm run contract"
+    "guide": "node tools/check-game-guide.mjs",
+    "verify": "npm run build && npm run test && npm run contract && npm run guide"
   },
   "engines": {
     "node": ">=18"

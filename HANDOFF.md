@@ -278,16 +278,18 @@ Xtoys-haptic-bridge/
 ├─ README.md                           ← 极简导航
 ├─ docs/                                ← 编号 = 阅读顺序
 │  ├─ 01-xtoys-script-format.md         ← XToys 脚本 JSON / Action / 宿主 JS API（核心资产）
-│  ├─ 02-webhook-protocol.md            ← 游戏 → XToys 通信协议（精简版）
-│  ├─ 03-protocol-mapping.md            ← part → Block 映射与仲裁（**已定论**，权威定义）
+│  ├─ 02-webhook-protocol.md            ← 游戏 → XToys 通信协议
+│  ├─ 03-protocol-mapping.md            ← part → Block 映射与仲裁（**权威定义**）
 │  ├─ 04-architecture-flow.md           ← Webhook → Block 输出 的完整数据流与时序图
 │  ├─ 05-game-event-mappings.md         ← 各游戏事件映射 + probe 方法论
-│  └─ 07-stage0-status-and-todo.md      ← 阶段 0 状态、已写代码、缺陷、剩余待议
-├─ src/                                 ← ES5 运行时源码（阶段 0 骨架，**未按映射定论重写**）
-├─ tools/                               ← 生成器与逻辑测试脚本
+│  ├─ 06-minimal-script-build.md        ← **怎么导入 / 绑定 / 验收**（阶段 0 交付说明）
+│  ├─ 07-stage0-status-and-todo.md      ← 阶段 0 状态、真机验收记录、剩余待办
+│  └─ 08-game-side-integration-guide.md ← **游戏侧插件编写指南**（要写游戏侧就读它）
+├─ src/xtoys-bridge.js                  ← ES5 运行时（被嵌入 Script 的 customFunctions）
+├─ tools/                               ← 生成器、契约检查、逻辑测试、指南核对、真机验收脚本
 ├─ examples/
+│  ├─ xtoys-minimal-3path.json          ← **要导入 XToys 的那一份**（9 Block / 10 Job）
 │  ├─ xtoys-importable-reference.json   ← 旧版完整可导入 Script（**只作语法参考**）
-│  ├─ xtoys-minimal-3path.json          ← 阶段 0 生成物（**按旧广播模型，待重生成**）
 │  └─ xthb-customFunctions.js           ← customFunctions 独立可读副本
 └─ reference/
    ├─ rpg-maker-mv/XtoysWS.js           ← 最初的 MV 参考实现
