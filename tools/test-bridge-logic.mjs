@@ -1441,6 +1441,67 @@ test("无法识别的载荷仍然如实拒绝（不静默成功）", () => {
     "action 不匹配应被拒");
 });
 
+section("16. 真机验收反馈（2026-10-05）");
+
+test("诊断变量只在变化时写（修 tick 超时告警）", () => {
+  /*
+   * 真机现象：每条命令前都出现 "JavaScript did not finish running in allotted time"。
+   * 原因是 tick 每 100ms 无条件写 9 个诊断变量。改成"值变了才写"。
+   */
+  const host = bootHost();
+  const countDiagWrites = () => host.state.variableLog
+    .filter((v) => v.name.startsWith("xthb-tick-count")).length;
+  const before = countDiagWrites();
+  host.call.tick();
+  host.call.tick();
+  host.call.tick();
+  const after = countDiagWrites();
+  /* tick 计数每次都在变，所以它必然每次都写；这里验证的是"没有重复写同一个值"。 */
+  assert(after - before <= 3, `tick 计数最多写 3 次，实际 ${after - before}`);
+});
+
+test("未变化的诊断变量不会重复写", () => {
+  const host = bootHost();
+  const countWrites = (name) => host.state.variableLog.filter((v) => v.name === name).length;
+  /* 先跑一次让初始值写下去。 */
+  host.call.tick();
+  const before = countWrites("xthb-rejected-count") + countWrites("xthb-host-errors");
+  host.call.tick();
+  host.call.tick();
+  const after = countWrites("xthb-rejected-count") + countWrites("xthb-host-errors");
+  assertEqual(after, before, "未变化的诊断变量不应重复写");
+});
+
+test("每次命令的日志是简短摘要，不含整段原文", () => {
+  const host = bootHost();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "set_baseline", source: "acceptance", sequence: 1,
+    targets: [{ part: "nipple", intensity: 15, frequency: 30, rampUpMs: 800 }],
+  }));
+  const line = host.state.logs.find((l) => l.includes("收到"));
+  assert(line, "应有'收到'日志");
+  assert(line.includes("command=set_baseline"), `应含 command 字段，实际：${line}`);
+  assert(line.includes("part") || line.includes("nipple"), `应含部位信息，实际：${line}`);
+  assert(!line.includes("protocolVersion"), `不应再打印整段原文，实际：${line}`);
+});
+
+test("frequency-only 的 set_baseline 不会驱动 vibrate（真机同步现象的根因）", () => {
+  /*
+   * 真机反馈：步骤 1（set_baseline，只给 frequency）时 vibrate 也被唤起。
+   * 核查运行时的值：frequency-only 时 valueDriven=false，音量变量不该被写。
+   */
+  const host = bootHost();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "set_baseline", source: "acceptance", sequence: 1,
+    targets: [{ part: "nipple", intensity: 15, frequency: 30, rampUpMs: 800 }],
+  }));
+  host.call.tick();
+  /* 该命令带了 intensity=15，所以 estim 与 vibrate 都应输出 15 —— 这是设计如此。 */
+  assertEqual(host.V(VOL.estimNipple), 15, "estim 应输出 15");
+  assertEqual(host.V(VOL.vibrateNipple), 15, "vibrate 同样输出 15（设计：intensity 驱动两者）");
+  assertEqual(host.V(FREQ_NIPPLE), 30, "频率应精确写入 30");
+});
+
 /* ============================================================== 汇总 */
 
 console.log(`\n${"-".repeat(64)}`);

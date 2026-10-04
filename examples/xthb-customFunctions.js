@@ -136,6 +136,8 @@ var xthbAuditSeen = {};
 var xthbTickCountForInit = 0;
 /* 本次初始化用的配置来自哪里（注入 / 回退读变量），以及它的类型与长度。 */
 var xthbInjectedInfo = "未知";
+/* 诊断变量的上次写入值，用来跳过重复写入（见 xthbWriteDiagnostics）。 */
+var xthbDiagCache = {};
 
 /* =====================================================================
  * 3. 基础工具（全部 ES5）
@@ -1479,16 +1481,31 @@ function xtoysBridgeTick() {
   return "tick";
 }
 
-/* 诊断变量：每次入口都刷新，别只让 tick 写（stop_all / 停止函数也要更新）。 */
+/*
+ * 诊断变量：只在值真的变化时才写。
+ *
+ * 真机实测（2026-09-30）：原本每个 tick（100ms）无条件写 9 个诊断变量，
+ * XToys 控制台每条命令前都出现 "JavaScript did not finish running in allotted time" ——
+ * 在 JS-Interpreter 里 10Hz × 9 次 setVariable 是实打实的开销。
+ * 诊断信息是给人看的，不是给逻辑用的，所以"不变就不写"完全够用。
+ */
 function xthbWriteDiagnostics() {
-  XTHB_setVariable("xthb-tick-count", xthbTicks);
-  XTHB_setVariable("xthb-active-events", xthbCountLiveEvents(xthbNowMs()));
-  XTHB_setVariable("xthb-calls-ok", xthbCallsOK);
-  XTHB_setVariable("xthb-rejected-count", xthbRejected);
-  XTHB_setVariable("xthb-ignored-count", xthbIgnored);
-  XTHB_setVariable("xthb-host-errors", xthbHostErrors);
-  XTHB_setVariable("xthb-last-error", xthbLastError);
-  XTHB_setVariable("xthb-last-ignored", xthbLastIgnored);
+  xthbSetDiag("xthb-tick-count", xthbTicks);
+  xthbSetDiag("xthb-active-events", xthbCountLiveEvents(xthbNowMs()));
+  xthbSetDiag("xthb-calls-ok", xthbCallsOK);
+  xthbSetDiag("xthb-rejected-count", xthbRejected);
+  xthbSetDiag("xthb-ignored-count", xthbIgnored);
+  xthbSetDiag("xthb-host-errors", xthbHostErrors);
+  xthbSetDiag("xthb-last-error", xthbLastError);
+  xthbSetDiag("xthb-last-ignored", xthbLastIgnored);
+}
+
+function xthbSetDiag(name, value) {
+  if (xthbHasOwn(xthbDiagCache, name) && xthbDiagCache[name] === value) {
+    return;
+  }
+  xthbDiagCache[name] = value;
+  XTHB_setVariable(name, value);
 }
 
 /* 仍在驱动输出的有限事件数（不含仅作序号栅栏保留的过期事件）。 */
@@ -1504,6 +1521,41 @@ function xthbCountLiveEvents(nowMs) {
     }
   }
   return total;
+}
+
+/*
+ * 命令摘要：只打印解析后的关键字段，不打印整段原文。
+ *
+ * 原来的写法是 `收到载荷 N 字符："<前 160 字符原文>…"`，真机上既慢又难读，
+ * 而且那个 … 容易被误认为 XToys 截断了数据（截断是我自己加的）。
+ * 关键字段足够定位问题。
+ */
+function xthbDescribeCommand(inner) {
+  var parts = [];
+  var targets;
+  var index;
+  var names = [];
+  parts.push("command=" + String(xthbPickKey(inner, ["command"])));
+  parts.push("source=" + String(xthbPickKey(inner, ["source"])));
+  if (xthbHasOwn(inner, "eventId")) {
+    parts.push("eventId=" + String(inner.eventId));
+  }
+  if (xthbHasOwn(inner, "sequence")) {
+    parts.push("seq=" + String(inner.sequence));
+  }
+  targets = xthbPickKey(inner, ["targets"]);
+  if (xthbIsArray(targets)) {
+    parts.push("targets=" + targets.length);
+    for (index = 0; index < targets.length && index < 4; index = index + 1) {
+      if (targets[index] && xthbIsNonEmptyString(targets[index].part)) {
+        names.push(targets[index].part);
+      }
+    }
+    if (names.length > 0) {
+      parts.push("parts=" + names.join("+"));
+    }
+  }
+  return parts.join(" ");
 }
 
 /*
@@ -1527,7 +1579,6 @@ function xtoysBridgeHandle(payload) {
   /* 对象是宿主直接给的情况：无需解析，直接当内层用。 */
   if (typeof payload === "object" && payload !== null) {
     inner = payload;
-    xthbLog("收到对象型载荷：" + xthbPreview(xthbSafeStringify(payload)));
   } else {
     rawLen = payload.length;
     if (rawLen === 0) {
@@ -1536,15 +1587,10 @@ function xtoysBridgeHandle(payload) {
     if (rawLen > XTHB_MAX_PAYLOAD_CHARS) {
       return xthbFail("invalid_payload", "载荷超过 " + XTHB_MAX_PAYLOAD_CHARS + " 字符");
     }
-    /*
-     * 载荷长度进入日志：真机上"传给 JS 的字符串被打坏"是实际发生过的问题
-     * （配置经 variables 注入时 494 → 91 字符）。如果 webhook 载荷也遇到同类
-     * 截断，这条日志能立刻看出来。
-     */
-    xthbLog("收到载荷 " + rawLen + " 字符：" + xthbPreview(payload));
     try {
       outer = JSON.parse(payload);
     } catch (outerErr) {
+      xthbLog("载荷不是合法 JSON（" + rawLen + " 字符）");
       return xthbFail("invalid_json", "载荷不是合法 JSON");
     }
     if (typeof outer !== "object" || outer === null) {
@@ -1552,6 +1598,7 @@ function xtoysBridgeHandle(payload) {
     }
     inner = xthbNormalizeEnvelope(outer);
     if (inner.error) {
+      xthbLog("载荷无法识别（" + rawLen + " 字符）：" + xthbPreview(payload));
       return xthbFail(inner.error);
     }
     inner = inner.inner;
@@ -1560,6 +1607,7 @@ function xtoysBridgeHandle(payload) {
   if (typeof inner !== "object" || inner === null) {
     return xthbFail("invalid_payload", "内层不是对象");
   }
+  xthbLog("收到 " + xthbDescribeCommand(inner));
 
   parsed = xthbParseCommand(inner);
   if (parsed.error) {
