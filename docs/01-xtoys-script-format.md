@@ -269,11 +269,21 @@ Script 的全局 JavaScript 运行在 **XToys JS-Interpreter** 中，约束：
 3. `updateJob stop`：停止全部输出 Job。
 4. `customCode`：调用 JS 清理函数（包在 `safeCall` 里）。
 
-> ⚠️ **顺序是有意这么排的（2026-09-30 修正）。** 旧参考实现把 JS 归零放在第 1 条，
-> 但本节末尾又说"JS 抛错时 Final Actions 是唯一保障" —— 这自相矛盾：
-> 如果某个 Action 抛错会让 XToys 中止后续 Action，那么先跑 JS 就等于把唯一的
-> 硬件硬保障押在"JS 不抛错"上。所以**字面量归零必须排在 `customCode` 之前**。
-> 生成器 `tools/build-xtoys-script.mjs` 里有对应自检，顺序被写错时会拒绝产出 JSON。
+> ⚠️ **顺序是有意这么排的（2026-09-30 修正；2026-10-05 真机证实为必需）。**
+> 旧参考实现把 JS 归零放在第 1 条，但本节末尾又说"JS 抛错时 Final Actions 是唯一保障"
+> —— 这自相矛盾：如果某个 Action 抛错会让 XToys 中止后续 Action，那么先跑 JS 就等于把
+> 唯一的硬件硬保障押在"JS 不抛错"上。所以**字面量归零必须排在 `customCode` 之前**。
+> 生成器 `tools/build-xtoys-script.mjs` 有对应自检，顺序写错时会拒绝产出 JSON。
+>
+> ✅ **真机证据（2026-10-05，验收步骤 15）**：用"武装式"探针让**排在最后一条的**
+> `customCode xtoysBridgeStopAll()` 在开头抛错，然后手动停 Script。观察结果：
+> - **第 1 条 `stopJob(scheduler)` 与 9 条字面量 `setVolume=0` 都照常执行**
+>   → **XToys 不会因某个 Action 抛错而中止后续 Action**（至少此情形下如此）。
+> - 设备**归零**；停 Script 后再发"加能量"命令，设备**完全没动**（调度 Job 确实已停）。
+>
+> **反推结论**：若按旧顺序把 `customCode` 放在第 1 条，这次抛错时**就不会**有字面量归零
+> 被执行 —— 设备将停在上一个非零输出上**持续通电**。
+> 因此这条顺序**是真正的安全要求，不是可选的保险**。
 
 **这些显式 UI 归零 Action 是强制项。** JS 也会归零变量，但当 JS 抛错、运行时未初始化或 Job 刷新失败时，Final Actions 是唯一的硬件停止保障。它们只写"当前输出 = 0"，**不修改设备最大强度或最大旋转速度**。
 
@@ -302,5 +312,10 @@ Script 的全局 JavaScript 运行在 **XToys JS-Interpreter** 中，约束：
 （与触发器传 `payload` 同一机制），不要依赖"写变量再读回来"。见 `docs/07` §1.1。
 
 ❌ **未验证**：真实设备行为、JS-Interpreter 的实际执行速度与调度抖动、导出 JSON 与导入 JSON 是否存在字段差异（旧文档要求每次测试记录差异，一直是 `待填写`）。
+
+✅ **实测确认（2026-10-05）：某个 Action 抛错不会中止后续 Action。** 用一个会抛错的
+`customCode` 放在 Final Actions 末尾，排在它前面的 `updateJob stop` 与 9 条字面量
+`setVolume=0` 都照常执行。**推论**：把字面量归零排在 `customCode` **之后**是危险的 ——
+一旦 JS 抛错，归零就不会执行，设备会持续通电。见 §7 的⚠️说明。
 
 > 任何一次真机测试后，请把发现的差异补写进本节。
