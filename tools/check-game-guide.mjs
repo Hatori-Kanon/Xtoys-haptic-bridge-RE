@@ -251,6 +251,23 @@ for (const [label, predicate] of REQUIRED_TOPICS) {
   check(label, predicate(guide));
 }
 
+/* F. 本文档【不规定】体感逻辑（2026-10-05 用户决定）
+ * 冷却 / 批量窗口 / 高潮锁这类策略因游戏而异，写进契约文档会变成误导性的"标准做法"。
+ * 只保留"这一点由你判断"的提示，具体数值留在 docs/05 的逐游戏观察记录里。 */
+console.log("\nF. 文档不得把体感策略写成规定（具体数值只留在 docs/05）");
+const FORBIDDEN_PRESCRIPTIONS = [
+  [/命中冷却\s*[:：]?\s*\d+\s*ms/, "规定了命中冷却的具体毫秒数"],
+  [/批量窗口\s*[:：]?\s*\d+\s*ms/, "规定了批量窗口的具体毫秒数"],
+  [/高潮(锁|去重)\s*[:：]?\s*\d+\s*(ms|秒|s)/, "规定了高潮锁的具体时长"],
+  [/120\s*ms/, "出现旧实现的 120ms 参考值"],
+  [/200\s*ms\s*窗口/, "出现旧实现的 200ms 批量窗口"],
+];
+for (const [re, label] of FORBIDDEN_PRESCRIPTIONS) {
+  check(`未${label}`, !re.test(guide));
+}
+check("明确说明体感逻辑由游戏侧自行判断",
+  guide.includes("留给你的判断") && guide.includes("按实际游戏定"));
+
 /* ------------------------------------------------------------------ 汇总 */
 
 console.log(`\n${"-".repeat(64)}`);
