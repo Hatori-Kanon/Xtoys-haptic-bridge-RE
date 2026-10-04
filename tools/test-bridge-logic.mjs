@@ -1349,6 +1349,26 @@ test("紧凑配置解析出的 Channel ID 与命名规范一致", () => {
   assert(ids.includes("part-rotator-nipple"), `通道类型词应为 rotator，实际 ${ids}`);
 });
 
+test("初始化日志里的配置长度是真实序列化长度（不是 [object Object] 的 15）", () => {
+  /*
+   * 真机实测（2026-09-30）：日志显示"配置来源：object/15字符"，看起来像配置被截断，
+   * 实际完全正常 —— 因为 String(普通对象) 在 XToys 里返回 "[object Object]"（15 字符）。
+   * 诊断必须用 JSON.stringify 才能反映真实长度。
+   */
+  const host = createMockHost();
+  host.call.raw('xtoysBridgeInit({"p":{"nipple":["estim","vibrate","rotate"]},"s":-1});');
+  const info = host.call.raw("xthbInjectedInfo");
+  const len = Number(/object\/(\d+)字符/.exec(info)[1]);
+  assert(len > 30, `长度应是真实序列化长度，实际 ${len}（info=${info}）`);
+  assert(!info.includes("/15字符"), `不得再出现 String(obj) 造成的 15，实际 ${info}`);
+});
+
+test("String(普通对象) 在本宿主里确实会得出 15 字符（说明为什么必须用 JSON.stringify）", () => {
+  const host = createMockHost();
+  const viaString = host.call.raw("String({a:1}).length");
+  assertEqual(viaString, 15, "String({a:1}) 应为 '[object Object]' 的 15 字符");
+});
+
 /* ============================================================== 汇总 */
 
 console.log(`\n${"-".repeat(64)}`);

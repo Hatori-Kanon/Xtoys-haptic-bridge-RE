@@ -498,6 +498,21 @@ function xthbConfigChannelValue(partSpec, metric) {
   return xthbPickKey(partSpec, [metric]);
 }
 
+/* 安全序列化：JSON.stringify 不可用时退回 String()，绝不因为诊断而抛异常。 */
+function xthbSafeStringify(value) {
+  if (xthbIsNonEmptyString(value)) {
+    return value;
+  }
+  try {
+    if (typeof JSON !== "undefined" && JSON && typeof JSON.stringify === "function") {
+      return JSON.stringify(value);
+    }
+  } catch (err) {
+    /* 落到下面的兜底 */
+  }
+  return String(value);
+}
+
 /* 大小写不敏感地取第一个存在的键。 */
 function xthbPickKey(obj, names) {
   var index;
@@ -1354,13 +1369,13 @@ function xtoysBridgeInit(injectedConfig) {
 
   if (injectedConfig !== undefined && injectedConfig !== null) {
     /*
-     * 诊断：把注入值的类型与长度打出来，便于真机上核对传值是否完整。
-     * 刻意不用 JSON.stringify —— 参考实现只证明了 JSON.parse 在 XToys 的
-     * JS-Interpreter 里可用，没证明 stringify 可用。这里只想拿到一个长度。
+     * 诊断：记录注入值的类型与【序列化后的长度】，用于核对传值是否完整。
+     * 这里必须用 JSON.stringify，不能用 String() —— 真机实测（2026-09-30）：
+     * XToys 的 String(普通对象) 返回 "[object Object]"，正好 15 个字符，
+     * 于是日志显示"配置来源：object/15字符"，看起来像配置被截断了，
+     * 实际完全正常（同一次日志里 Block 9 个就是证明）。别再踩这个坑。
      */
-    quoted = xthbIsNonEmptyString(injectedConfig)
-      ? injectedConfig
-      : String(injectedConfig);
+    quoted = xthbSafeStringify(injectedConfig);
     xthbInjectedInfo = (typeof injectedConfig) + "/" + (quoted ? quoted.length : 0) + "字符";
   } else {
     xthbInjectedInfo = "未注入（回退读变量）";
