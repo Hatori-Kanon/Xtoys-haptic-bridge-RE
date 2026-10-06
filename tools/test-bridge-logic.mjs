@@ -1488,17 +1488,50 @@ test("未变化的诊断变量不会重复写", () => {
   assertEqual(after, before, "未变化的诊断变量不应重复写");
 });
 
-test("每次命令的日志是简短摘要，不含整段原文", () => {
+test("每次命令的日志是简短摘要，不含整段原文（verbose 打开时）", () => {
   const host = bootHost();
+  /* 逐条命令日志现在默认关闭（真机联调时 3253 行里绝大多数是这类噪声）。 */
+  host.call.raw("XTHB_LOG_VERBOSE = true;");
   host.call.handle(envelope({
     protocolVersion: 1, command: "set_baseline", source: "acceptance", sequence: 1,
     targets: [{ part: "nipple", estimIntensity: 15, frequency: 30, rampUpMs: 800 }],
   }));
   const line = host.state.logs.find((l) => l.includes("收到"));
-  assert(line, "应有'收到'日志");
+  assert(line, "verbose 打开时应有'收到'日志");
   assert(line.includes("command=set_baseline"), `应含 command 字段，实际：${line}`);
   assert(line.includes("part") || line.includes("nipple"), `应含部位信息，实际：${line}`);
   assert(!line.includes("protocolVersion"), `不应再打印整段原文，实际：${line}`);
+});
+
+test("默认关闭逐条命令日志，但 rejected / ignored / 初始化仍然记录", () => {
+  /*
+   * 真机联调反馈：3253 行日志里绝大多数是 Job/Action 轨迹与逐条"收到 …"，
+   * 对定位帮助有限，而且控制台日志本身在 JS-Interpreter 里是开销。
+   * 但 rejected / ignored / 初始化 / 停止是定位必需信息，任何时候都要有。
+   */
+  const host = bootHost();
+  assert(host.call.raw("XTHB_LOG_VERBOSE") === false || host.call.raw("XTHB_LOG_VERBOSE") === undefined,
+    "默认应为非 verbose（JS-Interpreter 里布尔可能表现为 undefined/对象，故两者都接受）");
+
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "s", eventId: "ok", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 20, durationMs: 1000 }],
+  }));
+  assert(!host.state.logs.some((l) => l.includes("收到")), "默认可不记'收到'");
+
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "s", eventId: "bad", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 20 }],
+  }));
+  assert(host.state.logs.some((l) => l.includes("rejected")), "rejected 必须始终记录");
+
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "s", eventId: "unk", sequence: 1,
+    targets: [{ part: "tentacle", estimIntensity: 20, durationMs: 1000 }],
+  }));
+  host.call.tick();
+  assert(host.state.logs.some((l) => l.includes("ignored")), "ignored 必须始终记录");
+  assert(host.state.logs.some((l) => l.includes("初始化完成")), "初始化必须始终记录");
 });
 
 test("frequency-only 的 set_baseline 不会驱动 vibrate（真机同步现象的根因）", () => {
@@ -1631,6 +1664,118 @@ test("事件之间回到 0 时，同强度重推是可见的（这才是重推�
   host.call.tick();
   assert(host.pushCount() > before, "第二击必须重新推一次（0 → 40，脉冲可见）");
   assertEqual(host.V(VOL.estimNipple), 40, "第二击输出同样 40");
+});
+
+section("19. 联调回归：过期栅栏不得占用容量（游戏侧报告的阻塞问题）");
+
+/* 复现游戏侧一次"攻击纹理"：若干短脉冲，各自独立 eventId。 */
+function attackBurst(host, attackIndex, pulses = 34) {
+  const results = [];
+  for (let i = 0; i < pulses; i += 1) {
+    results.push(host.call.handle(envelope({
+      protocolVersion: 1, command: "play", source: "rpt",
+      eventId: `rpt-nipple-a${attackIndex}-p${i}`, sequence: 1,
+      targets: [{ part: "nipple", estimIntensity: 40, durationMs: 300 }],
+    })));
+  }
+  return results;
+}
+
+test("连续 4 次同规模攻击，不应出现 state_capacity_exceeded", () => {
+  /*
+   * 真机联调（2026-10-05）：一次攻击 = 34 个独立 eventId、durationMs 仅 250–700ms，
+   * 但过期条目为序号栅栏保留 10 分钟。旧实现用【容器条目数】当容量闸门，
+   * 于是每次攻击占掉 34 个名额 → 第 2 次部分被拒、第 3/4 次几乎全拒。
+   * 修法：闸门改用【仍在驱动输出的活跃事件数】。
+   */
+  const host = bootHost();
+  const accepted = [];
+  for (let a = 1; a <= 4; a += 1) {
+    accepted.push(attackBurst(host, a).filter((r) => r.ok).length);
+    host.testDate.current += 700; /* 走完这一轮，事件全部到期 */
+  }
+  assertEqual(accepted, [34, 34, 34, 34],
+    `四次攻击都应全部被接受，实际每轮接受数：${JSON.stringify(accepted)}`);
+});
+
+test("过期条目仍履行序号栅栏职责（容量修法不影响防重放）", () => {
+  const host = bootHost();
+  attackBurst(host, 1);
+  host.testDate.current += 2000;
+  const replay = host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "rpt",
+    eventId: "rpt-nipple-a1-p0", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 40, durationMs: 300 }],
+  }));
+  assertEqual(replay.ok, false, "重放旧 sequence 必须被拒（栅栏条目仍在）");
+  assertEqual(replay.code, "invalid_sequence", "错误码应为 invalid_sequence");
+});
+
+test("活跃事件数仍受限：同时存活的事件超过 64 时拒绝", () => {
+  const host = bootHost();
+  let rejected = null;
+  for (let i = 0; i < 70; i += 1) {
+    const r = host.call.handle(envelope({
+      protocolVersion: 1, command: "play", source: "storm",
+      eventId: `storm-${i}`, sequence: 1,
+      targets: [{ part: "nipple", estimIntensity: 30, durationMs: 600000 }],
+    }));
+    if (!r.ok) { rejected = { at: i, code: r.code }; break; }
+  }
+  assert(rejected !== null, "同时存活超过 64 个事件时必须被拒");
+  assertEqual(rejected.code, "state_capacity_exceeded", "错误码应为 state_capacity_exceeded");
+  assert(rejected.at === 64, `应在第 65 个（0-based 64）被拒，实际在第 ${rejected.at} 个`);
+});
+
+test("xthb-active-events 诊断变量与容量口径一致", () => {
+  const host = bootHost();
+  attackBurst(host, 1, 10);
+  host.call.tick();
+  assertEqual(host.V("xthb-active-events"), 10,
+    "诊断变量应等于活跃事件数（与容量闸门口径一致，便于从日志判断）");
+  host.testDate.current += 2000;
+  host.call.tick();
+  assertEqual(host.V("xthb-active-events"), 0, "到期后活跃数应回落");
+});
+
+test("残缺事件条目不会打断 tick（finishAtMs TypeError 回归）", () => {
+  /*
+   * 真机日志：tick 内抛 "Cannot read property 'finishAtMs' of undefined"。
+   * 静态检查没定位出必然路径，但既然真机崩过，所有读取点都必须走完整性守卫。
+   * 这里直接往容器里塞残缺条目，验证 tick 不崩且会把它们清理掉。
+   */
+  const host = bootHost();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "s", eventId: "good", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 50, durationMs: 60000 }],
+  }));
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 50, "前置：正常事件工作");
+
+  host.call.raw('xthbEvents["corrupt1"] = undefined;');
+  host.call.raw('xthbEvents["corrupt2"] = { source: "s", eventId: "x" };');
+  host.call.raw('xthbEvents["corrupt3"] = { finishAtMs: 1, parts: null };');
+
+  const result = host.call.tick();
+  assertEqual(result, "tick", "残缺条目不得让 tick 抛异常");
+  assertEqual(host.call.raw("xthbCountOwn(xthbEvents)"), 1,
+    "残缺条目应被清理，只剩那条正常事件");
+  assert(Number(host.V("xthb-corrupt-events")) >= 3, "应记录清理次数");
+  assertEqual(host.V(VOL.estimNipple), 50, "正常事件不受影响");
+});
+
+test("partFinishAtMs 缺失时回退到事件级到期（不崩、不误判）", () => {
+  const host = bootHost();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 60, durationMs: 60000 }],
+  }));
+  host.call.raw('xthbEvents["s\\u0000e"].partFinishAtMs = undefined;');
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 60, "回退到事件级到期后仍应正常输出");
+  host.testDate.current += 120000;
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 0, "事件级到期后应停止");
 });
 
 /* ============================================================== 汇总 */

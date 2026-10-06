@@ -94,6 +94,12 @@ var XTHB_MAX_DURATION_MS = 600000;
 var XTHB_MAX_EVENTS = 64;
 /* 事件整体到期后，还保留多久作为序号栅栏（防重复投递变成重复刺激）。 */
 var XTHB_EXPIRED_EVENT_KEEP_MS = 600000;
+/*
+ * 容器条目总数的硬上限（含仅作序号栅栏保留的过期条目）。
+ * 这是**内存保护**，不是语义闸门 —— 语义闸门见 xthbApplyPlay 里的
+ * "活跃事件数"判断。远超正常会话所需（一次 34 事件的攻击 × 10 分钟保留期）。
+ */
+var XTHB_MAX_RETAINED_EVENTS = 2000;
 /* 启动没读到配置时，tick 里最多补读多少次（约 3 秒）。 */
 var XTHB_MAX_INIT_RETRIES = 30;
 
@@ -134,6 +140,8 @@ var xthbLastIgnored = "";
 var xthbAuditSeen = {};
 /* tick 里"补读配置"的尝试次数（见 xtoysBridgeTick 的自愈分支）。 */
 var xthbTickCountForInit = 0;
+/* 发现并清理掉的残缺事件条目数（真机崩过一次 finishAtMs TypeError，见 xthbEventEntry）。 */
+var xthbCorruptEvents = 0;
 /* 本次初始化用的配置来自哪里（注入 / 回退读变量），以及它的类型与长度。 */
 var xthbInjectedInfo = "未知";
 /* 诊断变量的上次写入值，用来跳过重复写入（见 xthbWriteDiagnostics）。 */
@@ -153,6 +161,21 @@ function xthbNowMs() {
   return new Date().getTime();
 }
 
+/*
+ * 日志。
+ *
+ * 真机联调（2026-10-05）里一次测试产生 3253 行日志，其中绝大多数是 Job/Action
+ * 轨迹与逐条"收到 …"，对定位帮助有限；而控制台日志本身在 JS-Interpreter 里也是开销。
+ * 所以给逐条命令日志一个开关：
+ *
+ *   XTHB_LOG_VERBOSE = false → 只记 rejected / ignored / 异常 / 初始化 / 停止
+ *   XTHB_LOG_VERBOSE = true  → 另外记每条命令摘要（排查"为什么没反应"时打开）
+ *
+ * 注意：rejected / ignored / 初始化 / 停止这些**不经过这里**的过滤 ——
+ * 它们是定位问题时必需的信息，任何时候都要有。
+ */
+var XTHB_LOG_VERBOSE = false;
+
 function xthbLog(text) {
   try {
     if (typeof console !== "undefined" && console && console.log) {
@@ -160,6 +183,13 @@ function xthbLog(text) {
     }
   } catch (logErr) {
     /* 日志失败不影响业务，也不写任何硬件状态。 */
+  }
+}
+
+/* 逐条命令摘要：只在 verbose 打开时输出。 */
+function xthbLogVerbose(text) {
+  if (XTHB_LOG_VERBOSE) {
+    xthbLog(text);
   }
 }
 
@@ -774,17 +804,74 @@ function xthbRemoveEvent(source, eventId) {
   }
 }
 
+/*
+ * 事件容器的"完整性校验"：拿到一个可用的事件条目，否则返回 null。
+ *
+ * 为什么需要它：真机联调日志里出现过
+ *   TypeError: Cannot read property 'finishAtMs' of undefined
+ * 抛出点在 tick 内。静态检查没能定位出必然路径，但**生产代码在真机崩过一次，
+ * 就不能只靠推理说"不可能"** —— 所以所有读取点统一走这个守卫：
+ * 条目缺失或字段不完整时直接当"不存在"处理并清掉，绝不让它把 tick 打断。
+ */
+function xthbEventEntry(key) {
+  var e;
+  if (!xthbHasOwn(xthbEvents, key)) {
+    return null;
+  }
+  e = xthbEvents[key];
+  if (!e || typeof e !== "object" ||
+    typeof e.finishAtMs !== "number" ||
+    typeof e.parts !== "object" || e.parts === null) {
+    /* 残缺条目：清理掉，避免每次 tick 都在这里呛一下。 */
+    delete xthbEvents[key];
+    xthbNoteCorruptEvent();
+    return null;
+  }
+  if (typeof e.partFinishAtMs !== "object" || e.partFinishAtMs === null) {
+    /* partFinishAtMs 缺失不致命：回退到事件级到期时刻。 */
+    e.partFinishAtMs = {};
+    xthbNoteCorruptEvent();
+  }
+  return e;
+}
+
+function xthbNoteCorruptEvent() {
+  xthbCorruptEvents = xthbCorruptEvents + 1;
+  xthbLastError = "corrupt_event";
+  xthbLog("发现残缺事件条目，已清理（累计 " + xthbCorruptEvents + "）");
+}
+
 function xthbApplyPlay(source, eventId, sequence, parts, finishAtMs, partFinishAtMs) {
   var key = xthbEventKey(source, eventId);
-  var existing = xthbHasOwn(xthbEvents, key) ? xthbEvents[key] : null;
+  var existing = xthbEventEntry(key);
+  var live;
 
   /* 身份 = source + eventId；只有严格更大的 sequence 才替换（协议 §2）。 */
   if (existing && sequence <= existing.sequence) {
     return { ok: false, code: "invalid_sequence" };
   }
-  if (!existing && xthbCountOwn(xthbEvents) >= XTHB_MAX_EVENTS) {
+  /*
+   * 容量闸门按【仍在驱动输出的事件】计，不按容器条目数。
+   *
+   * 真机实测（2026-10-05 联调报告）：一次"攻击纹理"会产生 34 个独立 eventId、
+   * durationMs 只有 250–700ms，但过期条目会为序号栅栏保留 10 分钟 ——
+   * 用容器条目数当闸门时，每次攻击都占掉 34 个名额，第 3 次起就被
+   * state_capacity_exceeded 拒绝，越用越死。
+   *
+   * 栅栏职责由容器里的条目履行，**不需要同时占"活跃事件"的名额**。
+   */
+  live = xthbCountLiveEvents(xthbNowMs());
+  if (!existing && live >= XTHB_MAX_EVENTS) {
+    /*
+     * 带上数字：否则无法从日志区分"真的事件风暴"与"栅栏堆积"。
+     * 联调时正是靠区分这两个口径才定位到容量问题的。
+     */
+    xthbLog("容量拒绝：live=" + live + " retained=" + xthbCountOwn(xthbEvents) +
+      " max=" + XTHB_MAX_EVENTS + "（eventId=" + eventId + "）");
     return { ok: false, code: "state_capacity_exceeded" };
   }
+  /* 容器本身仍要有上限，防长时间会话无限增长（保留期本身就会清）。 */
+  xthbTrimRetainedEvents();
   xthbEvents[key] = {
     source: source,
     eventId: eventId,
@@ -808,6 +895,10 @@ function xthbApplyStop(source, eventId, parts) {
   var partNames;
   var index;
   var removed = 0;
+  /* 独立循环变量与"待删清单"，避免复用外层变量 / 边遍历边删。 */
+  var stopKey;
+  var stopEvent;
+  var deadKeys;
 
   if (eventId !== null && parts === null) {
     if (!xthbHasOwn(xthbEvents, xthbEventKey(source, eventId))) {
@@ -848,33 +939,40 @@ function xthbApplyStop(source, eventId, parts) {
     return { ok: true, code: "stopped_parts" };
   }
 
-  for (key in xthbEvents) {
-    if (!xthbHasOwn(xthbEvents, key)) {
+  /*
+   * 收集所有该来源的事件、移除指定部位；空壳事件先记下、最后统一删。
+   *
+   * 不用"边遍历边 delete"，也不复用外层循环变量（真机报告指出过这两点隐患：
+   * 在部分解释器下边遍历边删会跳过/重复元素，复用变量会污染外层逻辑）。
+   */
+  deadKeys = [];
+  for (stopKey in xthbEvents) {
+    if (!xthbHasOwn(xthbEvents, stopKey)) {
       continue;
     }
-    event = xthbEvents[key];
-    if (event.source !== source) {
+    stopEvent = xthbEventEntry(stopKey);
+    if (stopEvent === null) {
+      continue;
+    }
+    if (stopEvent.source !== source) {
       continue;
     }
     for (index = 0; index < partNames.length; index = index + 1) {
-      if (xthbHasOwn(event.parts, partNames[index])) {
-        delete event.parts[partNames[index]];
+      if (xthbHasOwn(stopEvent.parts, partNames[index])) {
+        delete stopEvent.parts[partNames[index]];
         removed = removed + 1;
       }
+    }
+    if (xthbCountOwn(stopEvent.parts) === 0) {
+      deadKeys.push(stopKey);
     }
   }
   if (removed === 0) {
     return { ok: false, code: "missing_stop_selector" };
   }
   /* 移除成功后才清理空壳事件。 */
-  for (key in xthbEvents) {
-    if (!xthbHasOwn(xthbEvents, key)) {
-      continue;
-    }
-    event = xthbEvents[key];
-    if (event.source === source && xthbCountOwn(event.parts) === 0) {
-      delete xthbEvents[key];
-    }
+  for (index = 0; index < deadKeys.length; index = index + 1) {
+    delete xthbEvents[deadKeys[index]];
   }
   return { ok: true, code: "stopped_parts" };
 }
@@ -1007,14 +1105,21 @@ function xthbCollectCandidatesUncached(part, metric, nowMs) {
     if (!xthbHasOwn(xthbEvents, key)) {
       continue;
     }
-    event = xthbEvents[key];
+    /* 完整性守卫：残缺条目不参与仲裁（也是 tick 崩溃的可能位置之一）。 */
+    event = xthbEventEntry(key);
+    if (event === null) {
+      continue;
+    }
     intent = event.parts[part];
     if (!intent) {
       continue;
     }
-    /* 每个部位自己的到期时刻。 */
+    /* 每个部位自己的到期时刻；partFinishAtMs 缺失时回退到事件级。 */
     finishAt = xthbHasOwn(event.partFinishAtMs, part)
       ? event.partFinishAtMs[part] : event.finishAtMs;
+    if (typeof finishAt !== "number") {
+      finishAt = event.finishAtMs;
+    }
     if (finishAt <= nowMs) {
       continue;
     }
@@ -1448,6 +1553,8 @@ function xtoysBridgeInit(injectedConfig) {
 function xtoysBridgeTick() {
   var nowMs;
   var key;
+  var evKey;
+  var event;
 
   /*
    * 自愈：如果启动时没读到配置（Initial Actions 里 updateVariable 与 customCode
@@ -1483,17 +1590,26 @@ function xtoysBridgeTick() {
    *   2. 事件整体到期一段时间后 → 才真正删除，避免状态无限增长。
    * 保留过期事件是有意的：重试/重复投递的 webhook 若带旧 sequence 必须被拒，
    * 否则一次重复投递就会变成重复刺激（docs/02 §2 的严格递增语义）。
+   *
+   * ⚠️ 真机日志里这里抛过 "Cannot read property 'finishAtMs' of undefined"。
+   * 静态检查没能定位出必然路径，但生产代码在真机崩过就不能只靠推理 ——
+   * 统一走 xthbEventEntry 完整性守卫，残缺条目直接清理而不是让它打断 tick。
+   * 循环变量用独立的 evKey，不再复用外层 key（真机报告指出过这点）。
    */
-  for (key in xthbEvents) {
-    if (!xthbHasOwn(xthbEvents, key)) {
+  for (evKey in xthbEvents) {
+    if (!xthbHasOwn(xthbEvents, evKey)) {
       continue;
     }
-    if (xthbEvents[key].finishAtMs <= nowMs) {
-      if (xthbEvents[key].expiredAtMs < 0) {
-        xthbEvents[key].expiredAtMs = nowMs;
+    event = xthbEventEntry(evKey);
+    if (event === null) {
+      continue;
+    }
+    if (event.finishAtMs <= nowMs) {
+      if (event.expiredAtMs < 0) {
+        event.expiredAtMs = nowMs;
       }
-      if (nowMs - xthbEvents[key].expiredAtMs > XTHB_EXPIRED_EVENT_KEEP_MS) {
-        delete xthbEvents[key];
+      if (nowMs - event.expiredAtMs > XTHB_EXPIRED_EVENT_KEEP_MS) {
+        delete xthbEvents[evKey];
       }
     }
   }
@@ -1516,10 +1632,12 @@ function xtoysBridgeTick() {
 function xthbWriteDiagnostics() {
   xthbSetDiag("xthb-tick-count", xthbTicks);
   xthbSetDiag("xthb-active-events", xthbCountLiveEvents(xthbNowMs()));
+  xthbSetDiag("xthb-retained-events", xthbCountOwn(xthbEvents));
   xthbSetDiag("xthb-calls-ok", xthbCallsOK);
   xthbSetDiag("xthb-rejected-count", xthbRejected);
   xthbSetDiag("xthb-ignored-count", xthbIgnored);
   xthbSetDiag("xthb-host-errors", xthbHostErrors);
+  xthbSetDiag("xthb-corrupt-events", xthbCorruptEvents);
   xthbSetDiag("xthb-last-error", xthbLastError);
   xthbSetDiag("xthb-last-ignored", xthbLastIgnored);
 }
@@ -1540,11 +1658,48 @@ function xthbCountLiveEvents(nowMs) {
     if (!xthbHasOwn(xthbEvents, key)) {
       continue;
     }
-    if (xthbEvents[key].finishAtMs > nowMs) {
+    if (xthbEventEntry(key) !== null && xthbEvents[key].finishAtMs > nowMs) {
       total = total + 1;
     }
   }
   return total;
+}
+
+/*
+ * 容器条目总数的硬上限保护（内存，不是语义闸门）。
+ * 超限时**优先清掉最老的过期条目**，先保活跃事件、再保最近的栅栏。
+ */
+function xthbTrimRetainedEvents() {
+  var keys;
+  var index;
+  var ev;
+  var nowMs;
+  var surplus;
+
+  if (xthbCountOwn(xthbEvents) < XTHB_MAX_RETAINED_EVENTS) {
+    return;
+  }
+  nowMs = xthbNowMs();
+  keys = xthbOwnKeys(xthbEvents);
+  /* 先按"过期且最老"排序：expiredAtMs 越小越老；未过期的排最后。 */
+  keys.sort(function (a, b) {
+    var ea = xthbEvents[a];
+    var eb = xthbEvents[b];
+    var va = (ea && ea.finishAtMs <= nowMs) ? ea.expiredAtMs : Number.MAX_VALUE;
+    var vb = (eb && eb.finishAtMs <= nowMs) ? eb.expiredAtMs : Number.MAX_VALUE;
+    return va - vb;
+  });
+  surplus = xthbCountOwn(xthbEvents) - XTHB_MAX_RETAINED_EVENTS + 1;
+  for (index = 0; index < keys.length && surplus > 0; index = index + 1) {
+    ev = xthbEvents[keys[index]];
+    /* 只淘汰已过期的；活跃事件一个都不动。 */
+    if (!ev || ev.finishAtMs > nowMs) {
+      continue;
+    }
+    delete xthbEvents[keys[index]];
+    surplus = surplus - 1;
+    xthbLog("容器达上限，已淘汰最老的过期栅栏条目（" + keys[index] + "）");
+  }
 }
 
 /*
@@ -1631,7 +1786,7 @@ function xtoysBridgeHandle(payload) {
   if (typeof inner !== "object" || inner === null) {
     return xthbFail("invalid_payload", "内层不是对象");
   }
-  xthbLog("收到 " + xthbDescribeCommand(inner));
+  xthbLogVerbose("收到 " + xthbDescribeCommand(inner));
 
   parsed = xthbParseCommand(inner);
   if (parsed.error) {
