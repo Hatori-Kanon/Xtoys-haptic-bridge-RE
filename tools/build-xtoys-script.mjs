@@ -366,6 +366,19 @@ function selfCheck() {
     }
   }
 
+  /*
+   * 调度间隔必须是合法的正数秒。写错会让 timer 不触发或触发过快，
+   * 而这类错误在 JSON 里看不出来（只是一个字符串），所以在这里挡住。
+   */
+  const interval = Number(SCHEDULER_INTERVAL_SECONDS);
+  if (!Number.isFinite(interval) || interval <= 0) {
+    errors.push(`调度间隔必须是正数秒，实际是 "${SCHEDULER_INTERVAL_SECONDS}"（来源 XTHB_TICK_SECONDS？）`);
+  } else if (interval < 0.05) {
+    errors.push(`调度间隔 ${interval}s 过快（>20Hz）—— JS-Interpreter 承受不了，且会占满执行预算`);
+  } else if (interval > 2) {
+    errors.push(`调度间隔 ${interval}s 过慢（<0.5Hz）—— 输出更新会明显迟钝`);
+  }
+
   if (errors.length > 0) {
     console.error("自检失败，未产出 JSON：");
     for (const e of errors) console.error(`  - ${e}`);
@@ -390,6 +403,8 @@ console.log(`  initialActions: ${script.initialActions.length}`);
 console.log(`  finalActions  : ${script.finalActions.length}`);
 console.log(`  Job 内 Action : ${jobActionCount}`);
 console.log(`  customFunctions: ${runtimeSource.length} 字符`);
+console.log(`  调度间隔      : ${SCHEDULER_INTERVAL_SECONDS}s (${(1 / Number(SCHEDULER_INTERVAL_SECONDS)).toFixed(1)} Hz)` +
+  (process.env.XTHB_TICK_SECONDS ? "  ← 来自 XTHB_TICK_SECONDS（判别实验）" : ""));
 console.log("  自检：Block 专属 / Channel 类型匹配 / Final 归零齐全 / 无频率归零 / 方向顺序 / Job 引用唯一");
 for (const block of BLOCKS) {
   console.log(`    ${block.uiName.padEnd(18)} ${block.channelId.padEnd(26)} ${block.outputJob}`);

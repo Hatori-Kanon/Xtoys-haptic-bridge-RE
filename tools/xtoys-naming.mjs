@@ -55,7 +55,19 @@ export const METRIC_LABEL = {
 export const ALL_METRICS = ["estim", "vibrate", "rotate"];
 
 export const SCHEDULER_JOB = "xthb-scheduler";
-export const SCHEDULER_INTERVAL_SECONDS = "0.1";
+/*
+ * 调度间隔（秒）。
+ *
+ * ⚠️ 这是一个**判别性实验的开关**（2026-10-07）。真机上 82%→55% 的 tick 击穿
+ * 执行预算，但耗时归因被两种可能混淆：
+ *   A. 我的代码每 tick 操作太多  → 降低频率则【总耗时也减半】，卡顿明显改善
+ *   B. tick 被设备写入/命令处理抢占 → 降低频率则 tick 数减半、每次写入开销不变
+ *      → 【总耗时基本不变】，只是摊到更少的 tick 上（每tick均值翻倍），卡顿感不变
+ * 用 `XTHB_TICK_SECONDS=0.2 npm run build` 生成 5Hz 版本，对比日志即可区分。
+ * 判别后应定回一个值，不要长期留两个。
+ */
+export const SCHEDULER_INTERVAL_SECONDS =
+  process.env.XTHB_TICK_SECONDS || "0.1";
 
 /* 频率变量的哨兵值：表示"本次没有频率意图，不要动频率"（docs/03 §4.5）。 */
 export const FREQUENCY_SENTINEL = -1;
