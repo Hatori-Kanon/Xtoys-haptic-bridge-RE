@@ -1897,17 +1897,42 @@ test("命令挤在两次 tick 之间到达时，已到期事件不占名额（�
   assertEqual(r.ok, true, "已到期事件不应再占名额（前置清理应生效）");
 });
 
-test("tick 分段计时变量在累计（报告要求的测量前提）", () => {
+test("tick 分段耗时只走日志，不写单调递增的变量（避免缓存失效）", () => {
+  /*
+   * 累计计时值是单调递增的，写成 Script 变量会让值缓存必然失效 →
+   * 每个刷新周期真实写 6 次 setVariable。真机实测这正是"仪表把自己变慢"的一部分。
+   * 所以分段耗时只在统计日志行里给出，不占变量写入。
+   */
   const host = bootHost();
   host.call.handle(envelope({
     protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
     targets: [{ part: "nipple", estimIntensity: 40, durationMs: 60000 }],
   }));
-  tickMany(host, 10);   /* 诊断每 10 个 tick 刷一次 */
-  assert(Number(host.V("xthb-tick-count")) >= 10, "tick 计数应累计");
-  assert(host.V("xthb-tick-total-ms") !== undefined, "应有 xthb-tick-total-ms");
-  assert(host.V("xthb-tick-compute-ms") !== undefined, "应有 xthb-tick-compute-ms");
-  assert(host.V("xthb-fence-events") !== undefined, "应有 xthb-fence-events");
+  tickMany(host, 50);
+  assert(host.V("xthb-tick-total-ms") === undefined, "不应写 tick-total-ms 变量");
+  assert(host.V("xthb-tick-compute-ms") === undefined, "不应写 tick-compute-ms 变量");
+  assert(host.V("xthb-tick-push-ms") === undefined, "不应写 tick-push-ms 变量");
+  assert(host.V("xthb-tick-clean-ms") === undefined, "不应写 tick-clean-ms 变量");
+  /* 但日志里必须有分段数据。 */
+  const line = host.state.logs.find((l) => l.includes("统计 tick="));
+  assert(line.includes("[仲裁="), "日志里应含仲裁分段");
+  assert(line.includes("推送="), "日志里应含推送分段");
+  assert(line.includes("清理诊断="), "日志里应含清理/诊断分段");
+});
+
+test("常规自检默认关闭（它自己就是可感知开销）", () => {
+  /*
+   * 真机实测自检每次 ~185ms，而统计窗口总共 6.2 秒 ——
+   * 为了测量而引入的开销比测量对象还大。基线在 init 时建立一次即可。
+   */
+  const host = bootHost();
+  tickMany(host, 100);
+  const lines = host.state.logs.filter((l) => l.includes("统计 tick="));
+  assert(lines.length >= 2, "应至少两个窗口");
+  assert(lines.every((l) => l.includes("自检=关闭")),
+    `常规窗口应报自检关闭，实际：${lines.map((l) => /自检=(\S+)/.exec(l)[1]).join(",")}`);
+  /* init 时仍应建立一次基线。 */
+  assert(host.call.raw("xthbSanityPrevMs") >= 0, "init 应已建立自检基线");
 });
 
 test("统计日志按期打进日志（无需读变量面板）", () => {
@@ -1931,8 +1956,7 @@ test("统计日志按期打进日志（无需读变量面板）", () => {
     "窗口墙钟=", "计时和=", "自检=", "活跃=", "栅栏=", "残缺=", "被拒=", "宿主异常="]) {
     assert(line.includes(field), `统计行应含 ${field}，实际：${line}`);
   }
-  assert(host.V("xthb-tick-push-ms") !== undefined, "应有推送分段计时");
-  assert(host.V("xthb-tick-clean-ms") !== undefined, "应有清理/诊断分段计时");
+  assert(line.includes("自检=关闭"), "常规窗口自检应关闭");
   tickMany(host, 49);   /* 累计 99 */
   assertEqual(countStats(), 1, "未到下一个 50 不应再打");
   host.call.tick();     /* 第 100 个 */
