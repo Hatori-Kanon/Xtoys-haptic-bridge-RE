@@ -1910,6 +1910,40 @@ test("tick 分段计时变量在累计（报告要求的测量前提）", () => 
   assert(host.V("xthb-fence-events") !== undefined, "应有 xthb-fence-events");
 });
 
+test("统计日志按期打进日志（无需读变量面板）", () => {
+  /*
+   * 用户反馈：XToys 界面里读不到 Script 变量，只能在日志里看。
+   * 所以把计时数据写成周期性日志行 —— 否则"为排查而加的仪表"用户根本读不到。
+   * bootHost() 已经 tick 过一次，所以这里补 48 + 1 = 49 次共 50 个 tick。
+   */
+  const host = bootHost();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 40, durationMs: 60000 }],
+  }));
+  tickMany(host, 48);   /* 累计 49 个 tick */
+  const countStats = () => host.state.logs.filter((l) => l.includes("统计 tick=")).length;
+  assertEqual(countStats(), 0, "未到 50 个 tick 不应打统计");
+  host.call.tick();     /* 第 50 个 */
+  assertEqual(countStats(), 1, "第 50 个 tick 应打一行统计");
+  const line = host.state.logs.find((l) => l.includes("统计 tick="));
+  for (const field of ["本窗口每tick均值=", "其中仲裁+推送=", "其余(清理/诊断/日志)=",
+    "活跃事件=", "栅栏=", "残缺=", "被拒=", "宿主异常="]) {
+    assert(line.includes(field), `统计行应含 ${field}，实际：${line}`);
+  }
+  tickMany(host, 49);   /* 累计 99 */
+  assertEqual(countStats(), 1, "未到下一个 50 不应再打");
+  host.call.tick();     /* 第 100 个 */
+  assertEqual(countStats(), 2, "第 100 个 tick 应打第二行");
+});
+
+test("初始化日志提示了两个排查开关（可发现性）", () => {
+  const host = bootHost();
+  const joined = host.state.logs.join("\n");
+  assert(joined.includes("统计"), "应提示统计日志存在");
+  assert(joined.includes("XTHB_LOG_VERBOSE"), "应提示逐条日志开关的名字");
+});
+
 /* ============================================================== 汇总 */
 
 console.log(`\n${"-".repeat(64)}`);

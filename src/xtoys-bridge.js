@@ -111,6 +111,8 @@ var XTHB_MAX_FENCE_EVENTS = 4000;
 var XTHB_FENCE_TRIM_INTERVAL_MS = 1000;
 /* 事件计数与计时这类"每 tick 都变"的诊断变量，每多少个 tick 才真正写一次。 */
 var XTHB_DIAG_INTERVAL_TICKS = 10;
+/* 每多少个 tick 往控制台打一行统计（50 → 约 5 秒一行）。 */
+var XTHB_STATS_INTERVAL_TICKS = 50;
 /* 启动没读到配置时，tick 里最多补读多少次（约 3 秒）。 */
 var XTHB_MAX_INIT_RETRIES = 30;
 
@@ -181,6 +183,10 @@ var xthbExpiredToFence = 0;
  */
 var xthbTickTotalMs = 0;
 var xthbTickComputeMs = 0;
+/* 统计窗口起点：上一次打统计时的累计计时与 tick 序号（见 xthbLogStats）。 */
+var xthbStatsWinTick = 0;
+var xthbStatsWinTotalMs = 0;
+var xthbStatsWinComputeMs = 0;
 /* 本次初始化用的配置来自哪里（注入 / 回退读变量），以及它的类型与长度。 */
 var xthbInjectedInfo = "未知";
 /* 诊断变量的上次写入值，用来跳过重复写入（见 xthbWriteDiagnostics）。 */
@@ -1605,6 +1611,12 @@ function xtoysBridgeInit(injectedConfig) {
   XTHB_setVariable("xthb-status", "running");
   xthbLog("初始化完成：部位 " + xthbCountParts() + " 个，Block " + xthbBlocks.length +
     " 个（配置来源：" + xthbInjectedInfo + "）");
+  /*
+   * 把两个开关的可发现性写进日志：真机排查时用户看不到变量面板，
+   * 如果不知道有这两个开关，就无从下手。
+   */
+  xthbLog("排查提示：每 " + XTHB_STATS_INTERVAL_TICKS + " 个 tick 打一行统计；" +
+    "逐条命令日志默认关闭，需要时把 XTHB_LOG_VERBOSE 设为 true");
   return "initialized";
 }
 
@@ -1665,7 +1677,61 @@ function xtoysBridgeTick() {
   XTHB_setVariable("xthb-status", "running");
   xthbWriteDiagnostics();
   xthbTickTotalMs = xthbTickTotalMs + (xthbNowMs() - tickStartMs);
+  xthbLogStats();
+  /*
+   * 统计日志本身也要计入下一次的观测范围之外 —— 这里把"统计日志的开销"
+   * 排除在 tick 测量之外是刻意的：否则日志会自己把自己算进去，读数偏大。
+   * 代价是 number 略小于真实 tick 耗时，但差值固定且很小（每 50 tick 一行）。
+   */
   return "tick";
+}
+
+/*
+ * 周期性统计日志（默认开启）。
+ *
+ * 为什么需要它：计时数据写在 Script 变量里，而 setVariable **不打日志**，
+ * 用户界面里也看不到变量面板 —— 于是"为了排查而加的仪表"用户根本读不到。
+ * 这里把它们定期打进控制台日志。
+ *
+ * ⚠️ 计时方式很关键：**按窗口累计，而不是每 tick 各自取差**。
+ * `Date.now()` 在本环境只有毫秒分辨率，单 tick 耗时往往不足 1ms，
+ * 逐 tick 取差会被全部截断成 0（第一版就是这么错的，读数恒为 0，等于没装仪表）。
+ * 现在改为：窗口开始时记下累计计时与该窗口的 tick 序号，
+ * 窗口结束时用 (累计差 / 窗口内 tick 数) 得平均值 —— 亚毫秒成本会随窗口累积而显现。
+ */
+function xthbLogStats() {
+  var windowTicks;
+  var avgTotal;
+  var avgCompute;
+  var line;
+  if (xthbTicks <= 0 || xthbTicks % XTHB_STATS_INTERVAL_TICKS !== 0) {
+    return;
+  }
+  windowTicks = xthbTicks - xthbStatsWinTick;
+  if (windowTicks <= 0) {
+    return;
+  }
+  avgTotal = (xthbTickTotalMs - xthbStatsWinTotalMs) / windowTicks;
+  avgCompute = (xthbTickComputeMs - xthbStatsWinComputeMs) / windowTicks;
+  xthbStatsWinTick = xthbTicks;
+  xthbStatsWinTotalMs = xthbTickTotalMs;
+  xthbStatsWinComputeMs = xthbTickComputeMs;
+
+  line = "统计 tick=" + xthbTicks +
+    " 本窗口每tick均值=" + xthbRound2(avgTotal) + "ms" +
+    " 其中仲裁+推送=" + xthbRound2(avgCompute) + "ms" +
+    " 其余(清理/诊断/日志)=" + xthbRound2(avgTotal - avgCompute) + "ms" +
+    " 活跃事件=" + xthbCountOwn(xthbEvents) +
+    " 栅栏=" + xthbCountFenceEvents() +
+    " 残缺=" + xthbCorruptEvents +
+    " 被拒=" + xthbRejected +
+    " 宿主异常=" + xthbHostErrors;
+  xthbLog(line);
+}
+
+/* 保留两位小数，避免日志里出现一长串浮点尾数。 */
+function xthbRound2(value) {
+  return Math.round(value * 100) / 100;
 }
 
 /*
