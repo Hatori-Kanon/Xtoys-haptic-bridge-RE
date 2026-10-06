@@ -56,22 +56,20 @@ export const ALL_METRICS = ["estim", "vibrate", "rotate"];
 
 export const SCHEDULER_JOB = "xthb-scheduler";
 /*
- * 调度间隔（秒）。**默认 0.2（5Hz）—— 由 2026-10-07 的 A/B 判别实验定下。**
+ * 调度间隔（秒）。**默认 0.1（10Hz）。**
  *
- * 实验（两次测试的游戏侧输入量完全相同，均为 105 个事件身份）：
- *   A 组 0.1s: tick 9.90/s，超时 5.30 次/秒，duty cycle 30.6%，每次写入 35.1ms
- *   B 组 0.2s: tick 5.12/s，超时 2.18 次/秒，duty cycle 12.0%，每次写入 24.8ms
- * 关键反证：**每 tick 的固定成本几乎不变**（安静期 A 1.06ms / B 1.04ms），
- * 而且仲裁开销与活跃事件数无关（活跃 0 个和 4 个都报 ~12-36ms）——
- * 说明成本主要是【每次调用解释器的固定开销】，不是"算得多"。
- * 因此减少调用次数是最直接的手段：一半的调用 → 超时率减半、duty cycle 降到 40%。
+ * 沿革（2026-10-07）：
+ *   A/B 判别实验证明耗时与【调用次数】成正比，于是把默认改成 0.2（5Hz）压卡顿。
+ *   但 5Hz 是**妥协**：输出更新分辨率降到 200ms，用户明确要求保住 10Hz 体感。
+ *   随后加入**脏门控**（状态没变就不重算仲裁）—— 那是对症的结构性修复：
+ *     空闲时 50 个 tick 只重算 1 次；游戏 5 次/秒发事件时只重算 50% 的 tick。
+ *   于是把默认改回 0.1，先验证脏门控能否在 10Hz 下把开销压住。
  *
- * 代价：输出更新分辨率从 100ms 变成 200ms。
- * 对触觉效果（ramp 尺度是几百 ms）可以接受；如需更细，用
- * `XTHB_TICK_SECONDS=0.1 npm run build` 回到 10Hz（那时会重新变卡）。
+ * 如果 10Hz + 脏门控仍然卡：改回 0.2 是单行改动，或
+ * `XTHB_TICK_SECONDS=0.2 npm run build`。
  */
 export const SCHEDULER_INTERVAL_SECONDS =
-  process.env.XTHB_TICK_SECONDS || "0.2";
+  process.env.XTHB_TICK_SECONDS || "0.1";
 
 /* 频率变量的哨兵值：表示"本次没有频率意图，不要动频率"（docs/03 §4.5）。 */
 export const FREQUENCY_SENTINEL = -1;

@@ -1761,10 +1761,16 @@ test("残缺事件条目不会打断 tick（finishAtMs TypeError 回归）", () 
   host.call.raw('xthbEvents["corrupt2"] = { source: "s", eventId: "x" };');
   host.call.raw('xthbEvents["corrupt3"] = { finishAtMs: 1, parts: null };');
 
+  /*
+   * 有效性复扫是**按 1 秒节流**的（与栅栏清理同频）：残缺条目的 finishAtMs 缺失，
+   * 不落在任何到期时刻上，所以快速退出永远不会放行它们 —— 只能靠这个周期复扫。
+   * 因此要把时钟推过节流间隔，才轮得到扫描。
+   */
+  host.testDate.current += 1100;
   const result = host.call.tick();
   assertEqual(result, "tick", "残缺条目不得让 tick 抛异常");
   assertEqual(host.call.raw("xthbCountOwn(xthbEvents)"), 1,
-    "残缺条目应被清理，只剩那条正常事件");
+    "残缺条目应被周期复扫清理，只剩那条正常事件");
   assert(Number(host.V("xthb-corrupt-events")) >= 3, "应记录清理次数");
   assertEqual(host.V(VOL.estimNipple), 50, "正常事件不受影响");
 });
@@ -2020,6 +2026,85 @@ test("统计行同时给出窗口墙钟与计时和，用于交叉校验", () =>
   assert(!second.includes("首个窗口不可信"), "第二个窗口的墙钟应可信");
   assert(sum <= wall * 1.5 + 1,
     `计时和不应明显超过墙钟（测量漏算会表现为超过）：wall=${wall} sum=${sum}`);
+});
+
+section("21. 脏门控：状态没变就不重算仲裁（10Hz 下的主要开销削减）");
+
+test("有事件但无新命令时，绝大多数 tick 跳过重算", () => {
+  /*
+   * 原本每个 tick 都无条件跑仲裁。实测稳态下每 tick 的对外动作恒为 1.1 次
+   * （与状态无关）—— 说明绝大部分 tick 在做无用重算。
+   */
+  const host = bootHost();
+  const base = Number(host.call.raw("xthbComputedTicks"));   /* init 会置脏，第一次 tick 要重算 */
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "g", eventId: "e1", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 40, durationMs: 60000 }],
+  }));
+  let ticks = 0;
+  for (let i = 0; i < 9; i += 1) {
+    host.testDate.current += 110;
+    host.call.tick();
+    ticks += 1;
+  }
+  assertEqual(Number(host.call.raw("xthbComputedTicks")) - base, 1,
+    `${ticks} 个 tick 中只应有 1 次重算（事件加入那次）`);
+  assert(Number(host.call.raw("xthbSkippedTicks")) >= 8, "其余 tick 应被跳过");
+  assertEqual(host.V(VOL.estimNipple), 40, "跳过重算不得影响输出值");
+});
+
+test("完全空闲时不重算", () => {
+  const host = bootHost();
+  const base = Number(host.call.raw("xthbComputedTicks"));
+  for (let i = 0; i < 50; i += 1) {
+    host.testDate.current += 100;
+    host.call.tick();
+  }
+  assertEqual(Number(host.call.raw("xthbComputedTicks")), base,
+    "无事件、无基线时不应再重算");
+  assertEqual(Number(host.call.raw("xthbSkippedTicks")), 50, "全部应跳过");
+});
+
+test("部位到期必须让脏标记置起（否则短事件被长事件拖着输出）", () => {
+  /*
+   * 这是我在实现快速退出时**当场犯过并被抓到**的同一个 bug：
+   * nextExpiry 若只取事件的 finishAtMs（= max(各部位)），
+   * 那么 nipple=200ms、clitoris=5000ms 时，nipple 到期后 tick 会认为
+   * "还没到时候"而跳过重算 → 短事件被长事件拖着继续输出。
+   */
+  const host = bootHost();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "g", eventId: "mixed", sequence: 1,
+    targets: [
+      { part: "nipple", estimIntensity: 90, durationMs: 200 },
+      { part: "clitoris", estimIntensity: 20, durationMs: 5000 },
+    ],
+  }));
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 90, "前置：nipple 在输出");
+  host.testDate.current += 1000;   /* 过了 nipple 的 200ms，未到 clitoris 的 5000ms */
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 0, "nipple 到期必须立刻停（脏门控不得拖住它）");
+  assertEqual(host.V(VOL.estimClitoris), 20, "clitoris 仍在自己的时长内");
+});
+
+test("stop_all 之后即使没有新命令也会推送归零", () => {
+  /* 脏门控最危险的失效模式：清空状态后不推送，设备停在最后一个非零值上。 */
+  const host = bootHost();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "g", eventId: "e", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 80, durationMs: 60000 }],
+  }));
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 80, "前置：在输出");
+  host.call.handle(envelope({ protocolVersion: 1, command: "stop_all", source: "g" }));
+  host.call.tick();
+  assertEqual(host.V(VOL.estimNipple), 0, "stop_all 后必须归零");
+  /* 再跑几个 tick 不应反复重算。 */
+  const before = Number(host.call.raw("xthbComputedTicks"));
+  for (let i = 0; i < 5; i += 1) { host.testDate.current += 100; host.call.tick(); }
+  assertEqual(Number(host.call.raw("xthbComputedTicks")), before,
+    "归零推送完成后不应继续重算");
 });
 
 /* ============================================================== 汇总 */

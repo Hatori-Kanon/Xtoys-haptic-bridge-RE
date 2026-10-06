@@ -178,6 +178,46 @@ var xthbCorruptEvents = 0;
 var xthbExpiredToFence = 0;
 
 /*
+ * 状态是否需要重算（脏标记）。
+ *
+ * 为什么需要它（2026-10-07 性能改造）：
+ * 原本每个 tick 都无条件跑一遍"仲裁 + 输出推送"。但游戏事件的到达频率远低于
+ * tick 频率 —— 绝大多数 tick 算出的结果与上一 tick **完全相同**，而那次仲裁
+ * 要遍历全部活跃事件（每个还过一遍完整性守卫）。
+ * 真机实测：稳态下每个 tick 的**对外动作数恒为 1.1 次**（与状态无关），
+ * 说明绝大部分 tick 在做无用重算。
+ *
+ * 现在只在状态真的变化过之后才重算。设置在：
+ *   - 收到任何改变状态的命令（play / update / set_baseline / stop / stop_all）
+ *   - 有事件到期（会改变仲裁结果）
+ *   - 强制推送（stop_all / stopAll 之后必须把归零推出去）
+ *   - 初始化完成
+ */
+var xthbStateDirty = true;
+
+/*
+ * 下一个到期时刻（毫秒）= min(所有活跃事件的 finishAtMs)。
+ * 用途：当 nowMs < 它时**没有任何事件可能到期**，于是可以整个跳过
+ * "扫描活跃表找到期事件"（那是每 tick 遍历全部活跃事件的工作）。
+ * -1 = 未知（有变化，必须重算）。
+ */
+var xthbNextExpiryMs = -1;
+/* 上一次"条目有效性复扫"（见 tick 里的说明）。 */
+var xthbLastValidScanMs = -1;
+/* 跳过的重算次数 / 实际重算次数 —— 用于确认脏标记真的在生效。 */
+var xthbSkippedTicks = 0;
+var xthbComputedTicks = 0;
+
+/*
+ * 标记"状态变了，下一个 tick 需要重算"。
+ * 同时让下一个到期时刻失效 —— 新事件可能更早到期，必须重算最小值。
+ */
+function xthbMarkDirty() {
+  xthbStateDirty = true;
+  xthbNextExpiryMs = -1;
+}
+
+/*
  * tick 分段计时（累计毫秒）。
  *
  * 2026-10-07 联调报告建议"先测量再优化"。第一版只把"仲裁+推送"合在一起测，
@@ -866,6 +906,7 @@ function xthbRemoveEvent(source, eventId) {
   var key = xthbEventKey(source, eventId);
   if (xthbHasOwn(xthbEvents, key)) {
     delete xthbEvents[key];
+    xthbMarkDirty();
   }
 }
 
@@ -956,6 +997,7 @@ function xthbApplyPlay(source, eventId, sequence, parts, finishAtMs, partFinishA
     delete xthbEventFence[key];
   }
   xthbTrimFence();
+  xthbMarkDirty();
   xthbEvents[key] = {
     source: source,
     eventId: eventId,
@@ -1020,6 +1062,7 @@ function xthbApplyStop(source, eventId, parts) {
     if (xthbCountOwn(event.parts) === 0) {
       xthbRemoveEvent(source, eventId);
     }
+    xthbMarkDirty();
     return { ok: true, code: "stopped_parts" };
   }
 
@@ -1058,6 +1101,7 @@ function xthbApplyStop(source, eventId, parts) {
   for (index = 0; index < deadKeys.length; index = index + 1) {
     delete xthbEvents[deadKeys[index]];
   }
+  xthbMarkDirty();
   return { ok: true, code: "stopped_parts" };
 }
 
@@ -1069,6 +1113,7 @@ function xthbApplyBaseline(source, sequence, parts) {
   /* 基线是完整快照，不是叠加：新快照替换旧快照，遗漏的部位被清除。 */
   xthbBaselines[source] = { sequence: sequence, parts: parts };
   xthbBaselineSeq[source] = sequence;
+  xthbMarkDirty();
   return { ok: true, code: "accepted" };
 }
 
@@ -1661,6 +1706,7 @@ function xtoysBridgeInit(injectedConfig) {
    * 而"固定工作量耗时在窗口之间是否稳定"正是判断测量可信度的依据。
    */
   xthbSanityPrevMs = xthbMeasureSanity().ms;
+  xthbMarkDirty();
   return "initialized";
 }
 
@@ -1714,21 +1760,49 @@ function xtoysBridgeTick() {
    */
   xthbMoveExpiredToFence(nowMs);
   xthbTrimFence();
+  /*
+   * 周期性的"条目有效性"复扫。
+   *
+   * 为什么必须有它：xthbMoveExpiredToFence 有快速退出（没到到期时刻就整个跳过），
+   * 而**残缺条目的 finishAtMs 缺失，不属于任何到期时刻** —— 于是它永远不会被
+   * 快速退出放行去检查，也就永远不会被发现和清理。
+   * 所以按固定间隔（与栅栏清理同频，1 秒一次）主动做一次有效性复扫。
+   * 成本是每秒一次 O(活跃事件数)，可以忽略。
+   */
+  if (xthbLastValidScanMs < 0 ||
+    nowMs - xthbLastValidScanMs >= XTHB_FENCE_TRIM_INTERVAL_MS) {
+    xthbLastValidScanMs = nowMs;
+    xthbRecomputeNextExpiry(nowMs);
+  }
   tickT1 = xthbNowMs();
   xthbTickCleanMs = xthbTickCleanMs + (tickT1 - tickStartMs);
 
   /*
-   * 三段分别计时。上一版把"仲裁+推送"合在一起测，得到 37ms 却无法判断
-   * 是"算得慢"还是"写设备慢" —— 所以务必分开。
+   * 只有状态变化过才重算。绝大多数 tick 会走到 else 分支，
+   * 于是完全不跑仲裁、不跑推送 —— 这是 10Hz 下最主要的开销削减。
+   *
+   * xthbForcePush 必须参与判断：stop_all / stopAll 清空状态后，
+   * 即使没有新命令也必须把归零推出去（否则设备会停在最后一个非零值上）。
    */
-  tickT0 = xthbNowMs();
-  outputs = xthbComputeOutputs(nowMs);
-  tickT1 = xthbNowMs();
-  xthbTickComputeMs = xthbTickComputeMs + (tickT1 - tickT0);
+  if (xthbStateDirty || xthbForcePush) {
+    xthbStateDirty = false;
+    tickT0 = xthbNowMs();
+    outputs = xthbComputeOutputs(nowMs);
+    tickT1 = xthbNowMs();
+    xthbTickComputeMs = xthbTickComputeMs + (tickT1 - tickT0);
 
-  xthbPushOutputs(outputs);
-  tickT0 = xthbNowMs();
-  xthbTickPushMs = xthbTickPushMs + (tickT0 - tickT1);
+    xthbPushOutputs(outputs);
+    tickT0 = xthbNowMs();
+    xthbTickPushMs = xthbTickPushMs + (tickT0 - tickT1);
+    xthbComputedTicks = xthbComputedTicks + 1;
+  } else {
+    /*
+     * 跳过一次重算。仍要写 xthb-status 与诊断，
+     * 否则日志会看不出 tick 还活着。
+     */
+    tickT0 = xthbNowMs();
+    xthbSkippedTicks = xthbSkippedTicks + 1;
+  }
 
   XTHB_setVariable("xthb-status", "running");
   xthbWriteDiagnostics();
@@ -1855,6 +1929,7 @@ function xthbLogStats() {
     " 自检=" + sanityText +
     " 活跃=" + xthbCountOwn(xthbEvents) +
     " 栅栏=" + xthbCountFenceEvents() +
+    " 跳过重算=" + xthbSkippedTicks + "/" + xthbTicks +
     " 残缺=" + xthbCorruptEvents +
     " 被拒=" + xthbRejected +
     " 宿主异常=" + xthbHostErrors;
@@ -1910,6 +1985,8 @@ function xthbWriteDiagnostics() {
     xthbSetDiag("xthb-tick-count", xthbTicks);
     xthbSetDiag("xthb-active-events", xthbCountOwn(xthbEvents));
     xthbSetDiag("xthb-fence-events", xthbCountFenceEvents());
+    xthbSetDiag("xthb-skipped-ticks", xthbSkippedTicks);
+    xthbSetDiag("xthb-computed-ticks", xthbComputedTicks);
   }
 }
 
@@ -1925,10 +2002,28 @@ function xthbSetDiag(name, value) {
  * 把已到期的事件从活跃表搬进栅栏表。
  * tick 每个周期调一次；xthbApplyPlay 在容量到顶时也会调一次（前置清理）。
  */
+/*
+ * 把已到期的事件从活跃表搬进栅栏表，并返回搬运数量。
+ *
+ * ⚠️ 两层到期都要处理，缺一不可：
+ *   1. **部位级**：某个部位到期 → 该部位不再参与仲裁，**仲裁结果会变**，
+ *      必须让脏标记置起（否则脏门控会跳过重算，短事件被长事件拖着继续输出）。
+ *      事件的 partFinishAtMs 是各部位各自的时刻，不能只看事件的 finishAtMs。
+ *   2. **事件级**：整个事件到期 → 搬进栅栏表。
+ *
+ * ⚠️ 带**快速退出**：调用方会先判断 nowMs 是否已到 xthbNextExpiryMs。
+ * 两次到期之间的所有 tick 都能整个跳过这次遍历 —— 这是 10Hz 下最大的可消除开销。
+ */
 function xthbMoveExpiredToFence(nowMs) {
   var key;
   var event;
+  var part;
+  var partExpired = false;
   var moved = 0;
+
+  if (xthbNextExpiryMs >= 0 && nowMs < xthbNextExpiryMs) {
+    return 0;   /* 还没到时候，任何部位/事件都不可能到期 */
+  }
   for (key in xthbEvents) {
     if (!xthbHasOwn(xthbEvents, key)) {
       continue;
@@ -1937,6 +2032,19 @@ function xthbMoveExpiredToFence(nowMs) {
     if (event === null) {
       continue;
     }
+    /* 部位级到期：不删事件（还要当序号栅栏），但仲裁结果会变。 */
+    if (event.partFinishAtMs) {
+      for (part in event.partFinishAtMs) {
+        if (!xthbHasOwn(event.partFinishAtMs, part)) {
+          continue;
+        }
+        if (typeof event.partFinishAtMs[part] === "number" &&
+          event.partFinishAtMs[part] <= nowMs) {
+          partExpired = true;
+        }
+      }
+    }
+    /* 事件级到期：搬去栅栏表。 */
     if (event.finishAtMs <= nowMs) {
       xthbEventFence[key] = {
         sequence: event.sequence,
@@ -1948,7 +2056,83 @@ function xthbMoveExpiredToFence(nowMs) {
       moved = moved + 1;
     }
   }
+  if (moved > 0) {
+    /*
+     * 事件真的被移走了 → 事件集合变了，下一个到期时刻必须重算。
+     * xthbMarkDirty 会同时把 xthbNextExpiryMs 置为 -1。
+     */
+    xthbMarkDirty();
+  } else if (partExpired) {
+    /*
+     * 只是某个部位到期（事件本体还在，要留着当序号栅栏）→ 仲裁结果会变，
+     * 但**事件集合没变**，所以只置脏标记、保留 nextExpiry 缓存。
+     * 若这里也调 xthbMarkDirty，nextExpiry 会被清成 -1，
+     * 下一次 tick 又要全表重扫 —— 那正是我想消除的开销。
+     */
+    xthbStateDirty = true;
+  } else {
+    xthbRecomputeNextExpiry(nowMs);
+  }
   return moved;
+}
+
+/*
+ * 重算"下一个需要重算的时刻"。
+ *
+ * ⚠️ **必须取【所有部位】的最早到期时刻，不能只取事件的 finishAtMs。**
+ * 事件的 finishAtMs 是 max(各部位)，而仲裁是按每个部位各自的 partFinishAtMs 判定的。
+ * 只用 finishAtMs 会导致：一个事件里 nipple=200ms、clitoris=5000ms 时，
+ * nipple 到期后 tick 认为"还没到时候"而跳过重算 → **短事件被长事件拖着继续输出**。
+ * 这个 bug 早期实现犯过（docs/03 专门记过），我第一版快速退出又犯了同一个错，
+ * 被回归测试当场抓住。
+ *
+ * 这里刻意**不走 xthbEventEntry 完整性守卫**：只需要最早时刻，用不到字段校验，
+ * 而守卫的多次 hasOwnProperty / typeof 检查在解释器里不便宜。
+ * 守卫仍由真正的读取点（tick 的搬迁与仲裁）负责。
+ */
+function xthbRecomputeNextExpiry(nowMs) {
+  var keys = xthbOwnKeys(xthbEvents);
+  var index;
+  var key;
+  var event;
+  var finish;
+  var part;
+  var best = -1;
+
+  /*
+   * 用"先取键快照再倒序删"代替 for...in —— 因为这里要**顺手清理残缺条目**，
+   * 而残缺条目算不出到期时刻，光把它排除在 nextExpiry 之外会让快速退出
+   * 永远跳过它（它的 finishAtMs 缺失，不落在任何到期时刻上）。
+   * 所以发现即清。调用方按固定间隔调本函数，保证清理不会无限拖延。
+   */
+  for (index = keys.length - 1; index >= 0; index = index - 1) {
+    key = keys[index];
+    event = xthbEvents[key];
+    if (!event || typeof event.finishAtMs !== "number" ||
+      !event.parts || typeof event.parts !== "object") {
+      delete xthbEvents[key];
+      xthbNoteCorruptEvent();
+      continue;
+    }
+    finish = event.finishAtMs;
+    /* 部位级的最早到期时刻优先于事件级。 */
+    if (event.partFinishAtMs) {
+      for (part in event.partFinishAtMs) {
+        if (!xthbHasOwn(event.partFinishAtMs, part)) {
+          continue;
+        }
+        if (typeof event.partFinishAtMs[part] === "number" &&
+          event.partFinishAtMs[part] < finish) {
+          finish = event.partFinishAtMs[part];
+        }
+      }
+    }
+    if (best < 0 || finish < best) {
+      best = finish;
+    }
+  }
+  /* 清理过残缺条目 → 事件集合变了，下一次需要重算。 */
+  xthbNextExpiryMs = best;
 }
 
 /* 栅栏表条目数（含已过期但仍需防重放的）。 */
