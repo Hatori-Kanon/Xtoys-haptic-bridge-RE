@@ -92,14 +92,25 @@ var XTHB_MAX_TARGETS = 16;
 var XTHB_MAX_ID_CHARS = 64;
 var XTHB_MAX_DURATION_MS = 600000;
 var XTHB_MAX_EVENTS = 64;
-/* 事件整体到期后，还保留多久作为序号栅栏（防重复投递变成重复刺激）。 */
+/*
+ * 事件整体到期后，还保留多久作为序号栅栏（防重复投递变成重复刺激）。
+ *
+ * 2026-10-07 联调报告建议重新审视这个数字：栅栏真正的语义需求是
+ * "重试/重复投递窗口内不被绕过"，那个窗口通常是秒级到分钟级，而不是 10 分钟。
+ * 保留期越长，栅栏表越大、内存与查表成本越高。暂维持 10 分钟（保守），
+ * 但它不再进 tick 热路径，所以对性能无影响。
+ */
 var XTHB_EXPIRED_EVENT_KEEP_MS = 600000;
 /*
- * 容器条目总数的硬上限（含仅作序号栅栏保留的过期条目）。
- * 这是**内存保护**，不是语义闸门 —— 语义闸门见 xthbApplyPlay 里的
- * "活跃事件数"判断。远超正常会话所需（一次 34 事件的攻击 × 10 分钟保留期）。
+ * 栅栏表条目上限（内存保护，不是语义闸门）。
+ * 栅栏不进 tick 热路径，所以这个上限只影响内存与"更早的重放会被漏放"。
+ * 一次 34 事件的攻击 × 10 分钟保留期内约 30 次攻击 ≈ 1000 条，故取 4000 留余量。
  */
-var XTHB_MAX_RETAINED_EVENTS = 2000;
+var XTHB_MAX_FENCE_EVENTS = 4000;
+/* 栅栏表清理的最小间隔：保留期是 10 分钟，每秒清一次足够，且不会把成本搬回热路径。 */
+var XTHB_FENCE_TRIM_INTERVAL_MS = 1000;
+/* 事件计数与计时这类"每 tick 都变"的诊断变量，每多少个 tick 才真正写一次。 */
+var XTHB_DIAG_INTERVAL_TICKS = 10;
 /* 启动没读到配置时，tick 里最多补读多少次（约 3 秒）。 */
 var XTHB_MAX_INIT_RETRIES = 30;
 
@@ -115,8 +126,20 @@ var xthbConfig = null;
 /* 由配置派生的"已配置 Block"列表。 */
 var xthbBlocks = [];
 
-/* 事件表：source + eventId -> 事件。 */
+/* 事件表：source + eventId -> 事件。**只放仍在驱动输出的活跃事件。** */
 var xthbEvents = {};
+/*
+ * 序号栅栏：source + eventId -> { sequence, finishAtMs, expiredAtMs }。
+ *
+ * 事件到期后从 xthbEvents 移到这里，只保留"防重放"所需的序号信息。
+ * 为什么分开（2026-10-07 联调报告问题 1/2）：
+ * 过期事件原本留在 xthbEvents 里 10 分钟，而 tick 每个周期要遍历整个容器好几遍
+ * （到期清理 + 活跃计数 + 条目计数）。在 JS-Interpreter 里对象遍历与属性访问的
+ * 常数因子很大，容器随会话单调增长 → 每 tick 固定成本越来越高 → 82% 的 tick
+ * 击穿执行预算，用户侧表现为"越到后面越卡"。
+ * 栅栏只需要在【收到同一个 source+eventId 时】查表，不必进热路径。
+ */
+var xthbEventFence = {};
 /* 基线快照：source -> { sequence, parts }。 */
 var xthbBaselines = {};
 /* 每个 source 的基线序号栅栏（stop_all 清状态但保留它）。 */
@@ -142,6 +165,22 @@ var xthbAuditSeen = {};
 var xthbTickCountForInit = 0;
 /* 发现并清理掉的残缺事件条目数（真机崩过一次 finishAtMs TypeError，见 xthbEventEntry）。 */
 var xthbCorruptEvents = 0;
+/* 从活跃表移入栅栏表的事件数（累计）。 */
+var xthbExpiredToFence = 0;
+
+/*
+ * tick 分段计时（累计毫秒）。
+ *
+ * 2026-10-07 联调报告建议"先测量再优化"：82% 的 tick 击穿执行预算，
+ * 但四个候选方向（容器遍历 / 诊断写变量 / 仲裁 / 输出推送）各占多少没有数字。
+ * 这里给出三个累计量，真机上连打几次攻击后直接读变量对比即可定位大头：
+ *   xthb-tick-total-ms    tick 总耗时
+ *   xthb-tick-compute-ms  仲裁 + 输出推送耗时
+ *   xthb-tick-count        用 xthb-tick-total-ms / xthb-tick-count 得平均
+ * 注意：用毫秒粒度测量微秒级工作会有噪声，但用来区分"谁是大头"足够。
+ */
+var xthbTickTotalMs = 0;
+var xthbTickComputeMs = 0;
 /* 本次初始化用的配置来自哪里（注入 / 回退读变量），以及它的类型与长度。 */
 var xthbInjectedInfo = "未知";
 /* 诊断变量的上次写入值，用来跳过重复写入（见 xthbWriteDiagnostics）。 */
@@ -844,34 +883,53 @@ function xthbNoteCorruptEvent() {
 function xthbApplyPlay(source, eventId, sequence, parts, finishAtMs, partFinishAtMs) {
   var key = xthbEventKey(source, eventId);
   var existing = xthbEventEntry(key);
-  var live;
+  var fence;
+  var seqInFence;
+
+  /*
+   * 序号栅栏查两处：活跃事件表 与 栅栏表。
+   * 两者合起来才等于"这个身份见过的最大 sequence"。
+   */
+  fence = xthbHasOwn(xthbEventFence, key) ? xthbEventFence[key] : null;
+  seqInFence = (fence && typeof fence.sequence === "number") ? fence.sequence : -Infinity;
 
   /* 身份 = source + eventId；只有严格更大的 sequence 才替换（协议 §2）。 */
   if (existing && sequence <= existing.sequence) {
     return { ok: false, code: "invalid_sequence" };
   }
-  /*
-   * 容量闸门按【仍在驱动输出的事件】计，不按容器条目数。
-   *
-   * 真机实测（2026-10-05 联调报告）：一次"攻击纹理"会产生 34 个独立 eventId、
-   * durationMs 只有 250–700ms，但过期条目会为序号栅栏保留 10 分钟 ——
-   * 用容器条目数当闸门时，每次攻击都占掉 34 个名额，第 3 次起就被
-   * state_capacity_exceeded 拒绝，越用越死。
-   *
-   * 栅栏职责由容器里的条目履行，**不需要同时占"活跃事件"的名额**。
-   */
-  live = xthbCountLiveEvents(xthbNowMs());
-  if (!existing && live >= XTHB_MAX_EVENTS) {
-    /*
-     * 带上数字：否则无法从日志区分"真的事件风暴"与"栅栏堆积"。
-     * 联调时正是靠区分这两个口径才定位到容量问题的。
-     */
-    xthbLog("容量拒绝：live=" + live + " retained=" + xthbCountOwn(xthbEvents) +
-      " max=" + XTHB_MAX_EVENTS + "（eventId=" + eventId + "）");
-    return { ok: false, code: "state_capacity_exceeded" };
+  if (sequence <= seqInFence) {
+    return { ok: false, code: "invalid_sequence" };
   }
-  /* 容器本身仍要有上限，防长时间会话无限增长（保留期本身就会清）。 */
-  xthbTrimRetainedEvents();
+  /*
+   * 容量闸门只看【活跃事件表】—— 栅栏不占容量。
+   * 真机实测（2026-10-05）：一次"攻击纹理"产生 34 个独立 eventId、durationMs
+   * 只有 250–700ms，用容器条目数当闸门会让每次攻击占掉 34 个 10 分钟名额，
+   * 第 3 次起就被拒，越用越死。
+   */
+  if (!existing && xthbCountOwn(xthbEvents) >= XTHB_MAX_EVENTS) {
+    /*
+     * 到顶了。先把"已经到期但还没被 tick 搬走"的事件立刻挪进栅栏表，再判一次。
+     *
+     * 为什么需要这一步：到期搬迁原本只发生在 tick 里（每 100ms）。如果一批命令
+     * 挤在两次 tick 之间到达，上一批明明已经到期的事件还挂在活跃表里占名额，
+     * 新命令就会被误拒。这里做一次廉价的前置清理，避免"明明空闲却被拒"。
+     */
+    xthbMoveExpiredToFence(xthbNowMs());
+    if (xthbCountOwn(xthbEvents) >= XTHB_MAX_EVENTS) {
+      /*
+       * 带上数字：否则无法从日志区分"真的事件风暴"与"栅栏堆积"。
+       */
+      xthbLog("容量拒绝：live=" + xthbCountOwn(xthbEvents) +
+        " fence=" + xthbCountOwn(xthbEventFence) +
+        " max=" + XTHB_MAX_EVENTS + "（eventId=" + eventId + "）");
+      return { ok: false, code: "state_capacity_exceeded" };
+    }
+  }
+  /* 更高的 sequence 到达 → 旧栅栏条目使命结束，可以让位。 */
+  if (fence !== null) {
+    delete xthbEventFence[key];
+  }
+  xthbTrimFence();
   xthbEvents[key] = {
     source: source,
     eventId: eventId,
@@ -1512,6 +1570,7 @@ function xtoysBridgeInit(injectedConfig) {
   }
 
   xthbEvents = {};
+  xthbEventFence = {};
   xthbBaselines = {};
   xthbBaselineSeq = {};
   xthbWritten = {};
@@ -1555,6 +1614,8 @@ function xtoysBridgeTick() {
   var key;
   var evKey;
   var event;
+  var tickStartMs;
+  var tickT0;
 
   /*
    * 自愈：如果启动时没读到配置（Initial Actions 里 updateVariable 与 customCode
@@ -1580,59 +1641,49 @@ function xtoysBridgeTick() {
     }
   }
   nowMs = xthbNowMs();
+  tickStartMs = nowMs;
   xthbTicks = xthbTicks + 1;
   xthbResetCandidateCache();
 
   /*
-   * 到期处理分两级：
-   *   1. 每个部位各自到期 → 该部位不再参与仲裁（输出自然回落到基线）。
-   *      这里不删事件，因为下面还要用它当序号栅栏。
-   *   2. 事件整体到期一段时间后 → 才真正删除，避免状态无限增长。
-   * 保留过期事件是有意的：重试/重复投递的 webhook 若带旧 sequence 必须被拒，
-   * 否则一次重复投递就会变成重复刺激（docs/02 §2 的严格递增语义）。
+   * 到期处理：
+   *   1. 部位各自到期 → 该部位不再参与仲裁（输出回落到基线）。
+   *   2. 事件整体到期 → **从活跃表移到栅栏表**，只保留序号信息。
+   *      这样 tick 的热路径只遍历活跃事件；栅栏（10 分钟保留）不再拖慢每个周期。
+   *   3. 栅栏表自己按保留期清理（同一函数里做，低频）。
    *
-   * ⚠️ 真机日志里这里抛过 "Cannot read property 'finishAtMs' of undefined"。
-   * 静态检查没能定位出必然路径，但生产代码在真机崩过就不能只靠推理 ——
-   * 统一走 xthbEventEntry 完整性守卫，残缺条目直接清理而不是让它打断 tick。
-   * 循环变量用独立的 evKey，不再复用外层 key（真机报告指出过这点）。
+   * 保留栅栏是有意的：重试/重复投递的 webhook 若带旧 sequence 必须被拒，
+   * 否则一次重复投递就会变成重复刺激（docs/02 §2 的严格递增语义）。
    */
-  for (evKey in xthbEvents) {
-    if (!xthbHasOwn(xthbEvents, evKey)) {
-      continue;
-    }
-    event = xthbEventEntry(evKey);
-    if (event === null) {
-      continue;
-    }
-    if (event.finishAtMs <= nowMs) {
-      if (event.expiredAtMs < 0) {
-        event.expiredAtMs = nowMs;
-      }
-      if (nowMs - event.expiredAtMs > XTHB_EXPIRED_EVENT_KEEP_MS) {
-        delete xthbEvents[evKey];
-      }
-    }
-  }
+  xthbMoveExpiredToFence(nowMs);
+  xthbTrimFence();
 
+  tickT0 = xthbNowMs();
   xthbPushOutputs(xthbComputeOutputs(nowMs));
+  xthbTickComputeMs = xthbTickComputeMs + (xthbNowMs() - tickT0);
 
   XTHB_setVariable("xthb-status", "running");
   xthbWriteDiagnostics();
+  xthbTickTotalMs = xthbTickTotalMs + (xthbNowMs() - tickStartMs);
   return "tick";
 }
 
 /*
- * 诊断变量：只在值真的变化时才写。
+ * 诊断变量：只在值真的变化时才写（xthbSetDiag 里有值缓存）。
  *
  * 真机实测（2026-09-30）：原本每个 tick（100ms）无条件写 9 个诊断变量，
  * XToys 控制台每条命令前都出现 "JavaScript did not finish running in allotted time" ——
- * 在 JS-Interpreter 里 10Hz × 9 次 setVariable 是实打实的开销。
- * 诊断信息是给人看的，不是给逻辑用的，所以"不变就不写"完全够用。
+ * 在 JS-Interpreter 里 10Hz × N 次 setVariable 是实打实的开销。
+ *
+ * 2026-10-07 第二次联调报告指出：新增的计时变量是**单调累计值**，几乎每个 tick
+ * 都在变 → 缓存失效 → 每 tick 真实写变量。所以计时用的累计值改为**每 10 个 tick
+ * 才写一次**（用 xthb-tick-count 的模判断），单次成本降一个数量级，
+ * 而累计量本来就只需要看趋势。
+ *
+ * 顺序也有讲究：**先把开销小的、低频的写完，再写计时值**，这样即使本次调用
+ * 在计时写完之后才超时，也不会影响关键诊断的可读性。
  */
 function xthbWriteDiagnostics() {
-  xthbSetDiag("xthb-tick-count", xthbTicks);
-  xthbSetDiag("xthb-active-events", xthbCountLiveEvents(xthbNowMs()));
-  xthbSetDiag("xthb-retained-events", xthbCountOwn(xthbEvents));
   xthbSetDiag("xthb-calls-ok", xthbCallsOK);
   xthbSetDiag("xthb-rejected-count", xthbRejected);
   xthbSetDiag("xthb-ignored-count", xthbIgnored);
@@ -1640,6 +1691,15 @@ function xthbWriteDiagnostics() {
   xthbSetDiag("xthb-corrupt-events", xthbCorruptEvents);
   xthbSetDiag("xthb-last-error", xthbLastError);
   xthbSetDiag("xthb-last-ignored", xthbLastIgnored);
+
+  /* 每 10 个 tick 刷一次事件计数与计时（这些值每 tick 都在变）。 */
+  if (xthbTicks % XTHB_DIAG_INTERVAL_TICKS === 0) {
+    xthbSetDiag("xthb-tick-count", xthbTicks);
+    xthbSetDiag("xthb-active-events", xthbCountOwn(xthbEvents));
+    xthbSetDiag("xthb-fence-events", xthbCountFenceEvents());
+    xthbSetDiag("xthb-tick-total-ms", xthbTickTotalMs);
+    xthbSetDiag("xthb-tick-compute-ms", xthbTickComputeMs);
+  }
 }
 
 function xthbSetDiag(name, value) {
@@ -1650,58 +1710,114 @@ function xthbSetDiag(name, value) {
   XTHB_setVariable(name, value);
 }
 
-/* 仍在驱动输出的有限事件数（不含仅作序号栅栏保留的过期事件）。 */
-function xthbCountLiveEvents(nowMs) {
-  var total = 0;
+/*
+ * 把已到期的事件从活跃表搬进栅栏表。
+ * tick 每个周期调一次；xthbApplyPlay 在容量到顶时也会调一次（前置清理）。
+ */
+function xthbMoveExpiredToFence(nowMs) {
   var key;
+  var event;
+  var moved = 0;
   for (key in xthbEvents) {
     if (!xthbHasOwn(xthbEvents, key)) {
       continue;
     }
-    if (xthbEventEntry(key) !== null && xthbEvents[key].finishAtMs > nowMs) {
-      total = total + 1;
+    event = xthbEventEntry(key);
+    if (event === null) {
+      continue;
+    }
+    if (event.finishAtMs <= nowMs) {
+      xthbEventFence[key] = {
+        sequence: event.sequence,
+        finishAtMs: event.finishAtMs,
+        expiredAtMs: nowMs
+      };
+      delete xthbEvents[key];
+      xthbExpiredToFence = xthbExpiredToFence + 1;
+      moved = moved + 1;
     }
   }
-  return total;
+  return moved;
+}
+
+/* 栅栏表条目数（含已过期但仍需防重放的）。 */
+function xthbCountFenceEvents() {
+  return xthbCountOwn(xthbEventFence);
+}
+
+/*
+ * 栅栏表清理：把超过保留期的条目删掉；并做总量上限保护。
+ *
+ * ⚠️ 刻意【节流】为低频执行：栅栏表可以有上千条，如果每个 tick 都扫一遍，
+ * 就等于把刚移出热路径的成本又搬了回来（2026-10-07 报告问题 2 的同一个坑）。
+ * 保留期是 10 分钟，每秒清一次完全够用。
+ */
+var xthbLastFenceTrimMs = -1;
+
+function xthbTrimFence() {
+  var key;
+  var entry;
+  var nowMs = xthbNowMs();
+  var total = 0;
+
+  if (xthbLastFenceTrimMs >= 0 && nowMs - xthbLastFenceTrimMs < XTHB_FENCE_TRIM_INTERVAL_MS) {
+    return;
+  }
+  xthbLastFenceTrimMs = nowMs;
+
+  for (key in xthbEventFence) {
+    if (!xthbHasOwn(xthbEventFence, key)) {
+      continue;
+    }
+    entry = xthbEventFence[key];
+    if (!entry || typeof entry.sequence !== "number") {
+      delete xthbEventFence[key];
+      continue;
+    }
+    if (nowMs - entry.expiredAtMs > XTHB_EXPIRED_EVENT_KEEP_MS) {
+      delete xthbEventFence[key];
+      continue;
+    }
+    total = total + 1;
+  }
+  if (total >= XTHB_MAX_FENCE_EVENTS) {
+    xthbEvictOldestFence(nowMs);
+  }
+}
+
+/* 栅栏表达上限时淘汰最老的条目（只影响"更早的重放会被漏放"，不影响活跃输出）。 */
+function xthbEvictOldestFence(nowMs) {
+  var oldestKey = null;
+  var oldestAt = Infinity;
+  var key;
+  var entry;
+  var surplus = xthbCountOwn(xthbEventFence) - XTHB_MAX_FENCE_EVENTS + 1;
+
+  while (surplus > 0) {
+    oldestKey = null;
+    oldestAt = Infinity;
+    for (key in xthbEventFence) {
+      if (!xthbHasOwn(xthbEventFence, key)) {
+        continue;
+      }
+      entry = xthbEventFence[key];
+      if (entry && entry.expiredAtMs < oldestAt) {
+        oldestAt = entry.expiredAtMs;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey === null) {
+      return;
+    }
+    delete xthbEventFence[oldestKey];
+    surplus = surplus - 1;
+  }
 }
 
 /*
  * 容器条目总数的硬上限保护（内存，不是语义闸门）。
  * 超限时**优先清掉最老的过期条目**，先保活跃事件、再保最近的栅栏。
  */
-function xthbTrimRetainedEvents() {
-  var keys;
-  var index;
-  var ev;
-  var nowMs;
-  var surplus;
-
-  if (xthbCountOwn(xthbEvents) < XTHB_MAX_RETAINED_EVENTS) {
-    return;
-  }
-  nowMs = xthbNowMs();
-  keys = xthbOwnKeys(xthbEvents);
-  /* 先按"过期且最老"排序：expiredAtMs 越小越老；未过期的排最后。 */
-  keys.sort(function (a, b) {
-    var ea = xthbEvents[a];
-    var eb = xthbEvents[b];
-    var va = (ea && ea.finishAtMs <= nowMs) ? ea.expiredAtMs : Number.MAX_VALUE;
-    var vb = (eb && eb.finishAtMs <= nowMs) ? eb.expiredAtMs : Number.MAX_VALUE;
-    return va - vb;
-  });
-  surplus = xthbCountOwn(xthbEvents) - XTHB_MAX_RETAINED_EVENTS + 1;
-  for (index = 0; index < keys.length && surplus > 0; index = index + 1) {
-    ev = xthbEvents[keys[index]];
-    /* 只淘汰已过期的；活跃事件一个都不动。 */
-    if (!ev || ev.finishAtMs > nowMs) {
-      continue;
-    }
-    delete xthbEvents[keys[index]];
-    surplus = surplus - 1;
-    xthbLog("容器达上限，已淘汰最老的过期栅栏条目（" + keys[index] + "）");
-  }
-}
-
 /*
  * 命令摘要：只打印解析后的关键字段，不打印整段原文。
  *
@@ -1996,7 +2112,13 @@ function xthbExecute(parsed) {
   var target;
 
   if (parsed.command === XTHB_CMD_STOP_ALL) {
-    /* 紧急全停：清掉所有基线与事件，保留序号栅栏，写零并推给设备。 */
+    /*
+     * 紧急全停：清掉所有基线与【活跃事件】，写零并推给设备。
+     *
+     * **栅栏表刻意不清**：它的职责是"拒绝旧 sequence 的重放"，
+     * 清掉等于让停机的瞬间成为重放窗口 —— 那正是要防的场景。
+     * 栅栏由自己的保留期（xthbTrimFence）负责回收。
+     */
     xthbEvents = {};
     xthbBaselines = {};
     xthbLog("stop_all：状态已清空，正在把归零推给输出 Job（不保证设备已收到）");
@@ -2054,6 +2176,7 @@ function xthbExecute(parsed) {
  * 所以随后的 tick 不会再重复推一遍。
  */
 function xtoysBridgeStopAll() {
+  /* 与 stop_all 同理：清活跃事件与基线，栅栏交给它自己的保留期回收。 */
   xthbEvents = {};
   xthbBaselines = {};
 

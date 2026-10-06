@@ -1092,9 +1092,14 @@ test("play 的空 targets 被拒绝，且不占用事件名额", () => {
     targets: [],
   }));
   assertEqual(result.ok, false, "空 targets 是畸形输入，必须拒绝");
-  host.call.tick();
-  assertEqual(host.V("xthb-active-events"), 0, "不得留下空壳事件");
+  assertEqual(host.call.raw("xthbCountOwn(xthbEvents)"), 0, "不得留下空壳事件");
 });
+
+/* 事件计数/计时类诊断每 XTHB_DIAG_INTERVAL_TICKS 个 tick 才刷一次，
+ * 需要多跑几个 tick 才能读到最新值。 */
+function tickMany(host, n) {
+  for (let i = 0; i < n; i += 1) host.call.tick();
+}
 
 test("被拒绝的 stop 不得改变状态", () => {
   const host = bootHost();
@@ -1730,11 +1735,11 @@ test("活跃事件数仍受限：同时存活的事件超过 64 时拒绝", () =
 test("xthb-active-events 诊断变量与容量口径一致", () => {
   const host = bootHost();
   attackBurst(host, 1, 10);
-  host.call.tick();
+  tickMany(host, 10);   /* 诊断每 10 个 tick 刷一次 */
   assertEqual(host.V("xthb-active-events"), 10,
     "诊断变量应等于活跃事件数（与容量闸门口径一致，便于从日志判断）");
   host.testDate.current += 2000;
-  host.call.tick();
+  tickMany(host, 10);
   assertEqual(host.V("xthb-active-events"), 0, "到期后活跃数应回落");
 });
 
@@ -1776,6 +1781,133 @@ test("partFinishAtMs 缺失时回退到事件级到期（不崩、不误判）",
   host.testDate.current += 120000;
   host.call.tick();
   assertEqual(host.V(VOL.estimNipple), 0, "事件级到期后应停止");
+});
+
+section("20. 性能改造：过期栅栏移出热路径（第二次联调报告问题 1/2）");
+
+test("到期事件从活跃表移入栅栏表，活跃表保持有界", () => {
+  /*
+   * 真机现象：82% 的 tick 击穿执行预算，越到后面越卡。
+   * 报告怀疑是"每 tick 遍历整个事件容器"，而容器因 10 分钟保留期单调增长。
+   * 改造后：活跃表只放仍驱动输出的事件（上限 64），栅栏单独一张表。
+   */
+  const host = bootHost();
+  const seen = [];
+  for (let a = 1; a <= 4; a += 1) {
+    attackBurst(host, a);
+    host.testDate.current += 700;   /* 事件全部到期 */
+    host.call.tick();               /* tick 把它们搬进栅栏 */
+    seen.push({
+      active: Number(host.call.raw("xthbCountOwn(xthbEvents)")),
+      fence: Number(host.call.raw("xthbCountOwn(xthbEventFence)")),
+    });
+  }
+  /* 活跃表每轮结束后应回到 0（都到期了）；栅栏累计保留。 */
+  assertEqual(seen.map((s) => s.active), [0, 0, 0, 0],
+    `活跃表应每轮清零（栅栏不该占活跃名额），实际：${JSON.stringify(seen)}`);
+  assertEqual(seen.map((s) => s.fence), [34, 68, 102, 136],
+    `栅栏应累计保留，实际：${JSON.stringify(seen)}`);
+});
+
+test("活跃表条目数不超过 64（热路径规模有界）", () => {
+  const host = bootHost();
+  /* 连打 6 次，中间只 tick 一次让到期事件迁走。 */
+  let maxActive = 0;
+  for (let a = 1; a <= 6; a += 1) {
+    attackBurst(host, a);
+    host.testDate.current += 700;
+    host.call.tick();
+    const n = Number(host.call.raw("xthbCountOwn(xthbEvents)"));
+    if (n > maxActive) maxActive = n;
+  }
+  assert(maxActive <= 64, `活跃表不得超过 64，实际峰值 ${maxActive}`);
+});
+
+test("栅栏表不会无限增长：超过保留期会被清理", () => {
+  const host = bootHost();
+  attackBurst(host, 1, 10);
+  host.testDate.current += 700;
+  host.call.tick();
+  assertEqual(Number(host.call.raw("xthbCountOwn(xthbEventFence)")), 10, "应有 10 条栅栏");
+  /* 越过 10 分钟保留期 + 节流间隔。 */
+  host.testDate.current += 700000;
+  host.call.tick();
+  assertEqual(Number(host.call.raw("xthbCountOwn(xthbEventFence)")), 0,
+    "超过保留期后栅栏应被清空");
+});
+
+test("栅栏清理有节流，不每个 tick 都扫（避免把成本搬回热路径）", () => {
+  const host = bootHost();
+  host.call.tick();
+  const t1 = host.call.raw("xthbLastFenceTrimMs");
+  host.call.tick();
+  host.call.tick();
+  const t2 = host.call.raw("xthbLastFenceTrimMs");
+  assertEqual(t2, t1, "节流间隔内不应重复清理");
+  host.testDate.current += 1500;
+  host.call.tick();
+  assert(host.call.raw("xthbLastFenceTrimMs") > t1, "超过间隔后应重新清理");
+});
+
+test("栅栏分离后防重放仍然有效（含跨 tick 与跨 stop_all）", () => {
+  const host = bootHost();
+  attackBurst(host, 1, 5);
+  host.testDate.current += 700;
+  host.call.tick();  /* 搬进栅栏 */
+
+  const replay = host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "rpt",
+    eventId: "rpt-nipple-a1-p0", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 40, durationMs: 300 }],
+  }));
+  assertEqual(replay.ok, false, "栅栏里的旧 sequence 必须被拒");
+
+  /* stop_all 之后栅栏仍在（否则停机瞬间成为重放窗口）。 */
+  host.call.handle(envelope({ protocolVersion: 1, command: "stop_all", source: "rpt" }));
+  const afterStop = host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "rpt",
+    eventId: "rpt-nipple-a1-p1", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 40, durationMs: 300 }],
+  }));
+  assertEqual(afterStop.ok, false, "stop_all 后栅栏仍应拦截旧 sequence");
+
+  /* 更大的 sequence 必须能继续用同一个 eventId。 */
+  const fresh = host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "rpt",
+    eventId: "rpt-nipple-a1-p0", sequence: 2,
+    targets: [{ part: "nipple", estimIntensity: 40, durationMs: 300 }],
+  }));
+  assertEqual(fresh.ok, true, "更大 sequence 应被接受（栅栏不阻塞新版本）");
+});
+
+test("命令挤在两次 tick 之间到达时，已到期事件不占名额（前置清理）", () => {
+  /*
+   * 到期搬迁原本只在 tick 里做（100ms 一次）。若一批命令挤在两次 tick 之间到达，
+   * 上一批"已经到期但还没被搬走"的事件会挂在活跃表里占名额，新命令被误拒。
+   * xthbApplyPlay 在容量到顶时会先做一次前置清理。
+   */
+  const host = bootHost();
+  attackBurst(host, 1, 64);              /* 打满 64 个活跃名额 */
+  host.testDate.current += 700;          /* 全部到期，但【不 tick】 */
+  const r = host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "rpt",
+    eventId: "rpt-late", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 40, durationMs: 300 }],
+  }));
+  assertEqual(r.ok, true, "已到期事件不应再占名额（前置清理应生效）");
+});
+
+test("tick 分段计时变量在累计（报告要求的测量前提）", () => {
+  const host = bootHost();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 40, durationMs: 60000 }],
+  }));
+  tickMany(host, 10);   /* 诊断每 10 个 tick 刷一次 */
+  assert(Number(host.V("xthb-tick-count")) >= 10, "tick 计数应累计");
+  assert(host.V("xthb-tick-total-ms") !== undefined, "应有 xthb-tick-total-ms");
+  assert(host.V("xthb-tick-compute-ms") !== undefined, "应有 xthb-tick-compute-ms");
+  assert(host.V("xthb-fence-events") !== undefined, "应有 xthb-fence-events");
 });
 
 /* ============================================================== 汇总 */

@@ -288,18 +288,29 @@ Webhook POST 到 `https://webhook.xtoys.app/<Webhook ID>`，`Content-Type: appli
 
 | 变量 | 含义 |
 | --- | --- |
-| `xthb-active-events` | **仍在驱动输出的活跃事件数** —— 这才是容量闸门看的值 |
-| `xthb-retained-events` | 容器条目总数（含仅作序号栅栏保留的过期条目） |
+| `xthb-active-events` | **仍在驱动输出的活跃事件数** —— 容量闸门看的就是它（上限 64） |
+| `xthb-fence-events` | 序号栅栏条目数（防重放用，**不占容量**、**不进 tick 热路径**） |
 | `xthb-rejected-count` | 累计被拒命令数 |
 | `xthb-ignored-count` | 累计被忽略的（部位, 指标）数 |
 | `xthb-corrupt-events` | 清理掉的残缺事件条目数（正常应恒为 0） |
 | `xthb-host-errors` | 被吞掉的宿主 API 异常次数（正常应恒为 0） |
+| `xthb-tick-total-ms` | tick 累计耗时（**性能排查用**，见下） |
+| `xthb-tick-compute-ms` | 其中"仲裁 + 输出推送"的累计耗时 |
+| `xthb-tick-count` | tick 累计次数 —— 用 `total-ms / count` 得平均每 tick 耗时 |
 | `xthb-last-error` / `xthb-last-ignored` | 最近一次拒绝 / 忽略的原因 |
+
+> **性能排查怎么用**：真机联调时如果出现"卡顿"，
+> 读 `xthb-tick-total-ms` 与 `xthb-tick-count` 相除得**平均每 tick 耗时**。
+> `xthb-tick-compute-ms` 与它的差值就是"清理 + 统计 + 诊断写变量"的开销。
+> 两者对比即可判断优化该往哪边使劲。
+>
+> 注意：事件计数与计时这类"每 tick 都在变"的诊断变量**每 10 个 tick 才真正写一次**
+> （缓存否则会失效，反而每 tick 都产生写变量开销）。所以读数有约 1 秒的滞后，看趋势足够。
 
 容量被拒时日志会带上数字，便于区分"真的事件风暴"与"栅栏堆积"：
 
 ```
-[xthb] 容量拒绝：live=64 retained=71 max=64（eventId=rpt-nipple-a3-p0）
+[xthb] 容量拒绝：live=64 fence=71 max=64（eventId=rpt-nipple-a3-p0）
 ```
 
 ---
