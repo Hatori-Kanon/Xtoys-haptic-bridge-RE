@@ -56,18 +56,22 @@ export const ALL_METRICS = ["estim", "vibrate", "rotate"];
 
 export const SCHEDULER_JOB = "xthb-scheduler";
 /*
- * 调度间隔（秒）。
+ * 调度间隔（秒）。**默认 0.2（5Hz）—— 由 2026-10-07 的 A/B 判别实验定下。**
  *
- * ⚠️ 这是一个**判别性实验的开关**（2026-10-07）。真机上 82%→55% 的 tick 击穿
- * 执行预算，但耗时归因被两种可能混淆：
- *   A. 我的代码每 tick 操作太多  → 降低频率则【总耗时也减半】，卡顿明显改善
- *   B. tick 被设备写入/命令处理抢占 → 降低频率则 tick 数减半、每次写入开销不变
- *      → 【总耗时基本不变】，只是摊到更少的 tick 上（每tick均值翻倍），卡顿感不变
- * 用 `XTHB_TICK_SECONDS=0.2 npm run build` 生成 5Hz 版本，对比日志即可区分。
- * 判别后应定回一个值，不要长期留两个。
+ * 实验（两次测试的游戏侧输入量完全相同，均为 105 个事件身份）：
+ *   A 组 0.1s: tick 9.90/s，超时 5.30 次/秒，duty cycle 30.6%，每次写入 35.1ms
+ *   B 组 0.2s: tick 5.12/s，超时 2.18 次/秒，duty cycle 12.0%，每次写入 24.8ms
+ * 关键反证：**每 tick 的固定成本几乎不变**（安静期 A 1.06ms / B 1.04ms），
+ * 而且仲裁开销与活跃事件数无关（活跃 0 个和 4 个都报 ~12-36ms）——
+ * 说明成本主要是【每次调用解释器的固定开销】，不是"算得多"。
+ * 因此减少调用次数是最直接的手段：一半的调用 → 超时率减半、duty cycle 降到 40%。
+ *
+ * 代价：输出更新分辨率从 100ms 变成 200ms。
+ * 对触觉效果（ramp 尺度是几百 ms）可以接受；如需更细，用
+ * `XTHB_TICK_SECONDS=0.1 npm run build` 回到 10Hz（那时会重新变卡）。
  */
 export const SCHEDULER_INTERVAL_SECONDS =
-  process.env.XTHB_TICK_SECONDS || "0.1";
+  process.env.XTHB_TICK_SECONDS || "0.2";
 
 /* 频率变量的哨兵值：表示"本次没有频率意图，不要动频率"（docs/03 §4.5）。 */
 export const FREQUENCY_SENTINEL = -1;
