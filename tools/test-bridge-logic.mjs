@@ -1927,10 +1927,12 @@ test("统计日志按期打进日志（无需读变量面板）", () => {
   host.call.tick();     /* 第 50 个 */
   assertEqual(countStats(), 1, "第 50 个 tick 应打一行统计");
   const line = host.state.logs.find((l) => l.includes("统计 tick="));
-  for (const field of ["本窗口每tick均值=", "其中仲裁+推送=", "其余(清理/诊断/日志)=",
-    "活跃事件=", "栅栏=", "残缺=", "被拒=", "宿主异常="]) {
+  for (const field of ["每tick均值=", "[仲裁=", "推送=", "清理诊断=",
+    "窗口墙钟=", "计时和=", "自检=", "活跃=", "栅栏=", "残缺=", "被拒=", "宿主异常="]) {
     assert(line.includes(field), `统计行应含 ${field}，实际：${line}`);
   }
+  assert(host.V("xthb-tick-push-ms") !== undefined, "应有推送分段计时");
+  assert(host.V("xthb-tick-clean-ms") !== undefined, "应有清理/诊断分段计时");
   tickMany(host, 49);   /* 累计 99 */
   assertEqual(countStats(), 1, "未到下一个 50 不应再打");
   host.call.tick();     /* 第 100 个 */
@@ -1942,6 +1944,58 @@ test("初始化日志提示了两个排查开关（可发现性）", () => {
   const joined = host.state.logs.join("\n");
   assert(joined.includes("统计"), "应提示统计日志存在");
   assert(joined.includes("XTHB_LOG_VERBOSE"), "应提示逐条日志开关的名字");
+});
+
+test("测量自检：固定工作量的耗时被测量出来（时钟会前进时）", () => {
+  /*
+   * 用途：若同一段固定工作在不同窗口报出成倍差异，说明计时不可信。
+   * 这里验证它能测出非零值（时钟前进时），以及在冻结时钟下不崩。
+   */
+  const host = bootHost();
+  const r = host.call.raw("xthbMeasureSanity()");
+  assert(r && typeof r.ms === "number", "应返回数值 ms");
+  assert(r.acc > 0, "自检工作应真的执行（累加器非零）");
+});
+
+test("第一个窗口的墙钟被明确标为不可信（分母是启动耗时）", () => {
+  /*
+   * 起始点是 0，而启动过程（配置解析 + 9 个 Block 构建 + Initial Actions）本身耗时，
+   * 于是第一个窗口的 wallMs 会是个巨大的数，把"每 tick 均值"拉成假象。
+   * 真机日志里第一个窗口报过 1.42ms —— 就是被巨大分母拉低的结果。
+   */
+  const host = bootHost();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 40, durationMs: 60000 }],
+  }));
+  tickMany(host, 50);
+  const first = host.state.logs.find((l) => l.includes("统计 tick="));
+  assert(first.includes("窗口墙钟=首个窗口不可信"),
+    `第一个窗口应被标记为不可信，实际：${first}`);
+});
+
+test("统计行同时给出窗口墙钟与计时和，用于交叉校验", () => {
+  /*
+   * 若"计时和"远小于"窗口墙钟"，说明 tick 之外还有时间没被计入（或测量漏算）；
+   * 两者接近才说明分段计时覆盖了主要开销。这是判断测量可信度的关键对照。
+   * 取第二个窗口（第一个的墙钟被标记为不可信）。
+   */
+  const host = bootHost();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "s", eventId: "e", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 40, durationMs: 60000 }],
+  }));
+  tickMany(host, 100);
+  const lines = host.state.logs.filter((l) => l.includes("统计 tick="));
+  assert(lines.length >= 2, `应至少有两个窗口，实际 ${lines.length}`);
+  const second = lines[1];
+  const wall = Number(/窗口墙钟=([\d.]+)ms/.exec(second)[1]);
+  const sum = Number(/计时和=([\d.]+)ms/.exec(second)[1]);
+  assert(wall >= 0 && sum >= 0, `两者都应非负：wall=${wall} sum=${sum}`);
+  /* 第二个窗口的墙钟必须可信（不是被标记的那个）。 */
+  assert(!second.includes("首个窗口不可信"), "第二个窗口的墙钟应可信");
+  assert(sum <= wall * 1.5 + 1,
+    `计时和不应明显超过墙钟（测量漏算会表现为超过）：wall=${wall} sum=${sum}`);
 });
 
 /* ============================================================== 汇总 */

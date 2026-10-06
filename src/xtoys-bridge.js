@@ -113,6 +113,8 @@ var XTHB_FENCE_TRIM_INTERVAL_MS = 1000;
 var XTHB_DIAG_INTERVAL_TICKS = 10;
 /* 每多少个 tick 往控制台打一行统计（50 → 约 5 秒一行）。 */
 var XTHB_STATS_INTERVAL_TICKS = 50;
+/* 测量自检的固定迭代次数（用于判断计时是否可信，见 xthbMeasureSanity）。 */
+var XTHB_SANITY_ITERATIONS = 400;
 /* 启动没读到配置时，tick 里最多补读多少次（约 3 秒）。 */
 var XTHB_MAX_INIT_RETRIES = 30;
 
@@ -173,20 +175,31 @@ var xthbExpiredToFence = 0;
 /*
  * tick 分段计时（累计毫秒）。
  *
- * 2026-10-07 联调报告建议"先测量再优化"：82% 的 tick 击穿执行预算，
- * 但四个候选方向（容器遍历 / 诊断写变量 / 仲裁 / 输出推送）各占多少没有数字。
- * 这里给出三个累计量，真机上连打几次攻击后直接读变量对比即可定位大头：
- *   xthb-tick-total-ms    tick 总耗时
- *   xthb-tick-compute-ms  仲裁 + 输出推送耗时
- *   xthb-tick-count        用 xthb-tick-total-ms / xthb-tick-count 得平均
- * 注意：用毫秒粒度测量微秒级工作会有噪声，但用来区分"谁是大头"足够。
+ * 2026-10-07 联调报告建议"先测量再优化"。第一版只把"仲裁+推送"合在一起测，
+ * 结果 37ms 无法判断是"算得慢"还是"写设备慢"。这里拆成三段：
+ *   xthbTickComputeMs  —— 仲裁（算每个 Block 该输出什么）
+ *   xthbTickPushMs     —— 推送（写变量 + 启动输出 Job）
+ *   xthbTickCleanMs    —— 到期搬迁 / 栅栏清理 / 诊断写变量 / 统计日志
+ * 三者相加 ≈ tick 总耗时；差值就是剩余的框架开销。
+ *
+ * ⚠️ 测量可信度：`Date.now()` 在本环境的分辨率与是否被粗化都不明。
+ * 所以 xthbLogStats 里同时给出"窗口墙钟跨度"，与累计计时对照；
+ * 并对一段固定工作量做自检（见 xthbMeasureSanity），
+ * 如果同一段工作在不同窗口报出成倍差异，就说明测量是噪声、不能作为优化依据。
  */
 var xthbTickTotalMs = 0;
 var xthbTickComputeMs = 0;
+var xthbTickPushMs = 0;
+var xthbTickCleanMs = 0;
 /* 统计窗口起点：上一次打统计时的累计计时与 tick 序号（见 xthbLogStats）。 */
 var xthbStatsWinTick = 0;
 var xthbStatsWinTotalMs = 0;
 var xthbStatsWinComputeMs = 0;
+var xthbStatsWinPushMs = 0;
+var xthbStatsWinCleanMs = 0;
+var xthbStatsWinWallMs = 0;
+/* 测量自检上次的读数（用于跨窗口比较）。 */
+var xthbSanityPrevMs = -1;
 /* 本次初始化用的配置来自哪里（注入 / 回退读变量），以及它的类型与长度。 */
 var xthbInjectedInfo = "未知";
 /* 诊断变量的上次写入值，用来跳过重复写入（见 xthbWriteDiagnostics）。 */
@@ -1615,8 +1628,13 @@ function xtoysBridgeInit(injectedConfig) {
    * 把两个开关的可发现性写进日志：真机排查时用户看不到变量面板，
    * 如果不知道有这两个开关，就无从下手。
    */
-  xthbLog("排查提示：每 " + XTHB_STATS_INTERVAL_TICKS + " 个 tick 打一行统计；" +
+  xthbLog("排查提示：每 " + XTHB_STATS_INTERVAL_TICKS + " 个 tick 打一行统计（含分段耗时与测量自检）；" +
     "逐条命令日志默认关闭，需要时把 XTHB_LOG_VERBOSE 设为 true");
+  /*
+   * 预热一次测量自检并记下基线：否则第一个统计窗口会报"首次"，
+   * 而"固定工作量耗时在窗口之间是否稳定"正是判断测量可信度的依据。
+   */
+  xthbSanityPrevMs = xthbMeasureSanity().ms;
   return "initialized";
 }
 
@@ -1628,6 +1646,8 @@ function xtoysBridgeTick() {
   var event;
   var tickStartMs;
   var tickT0;
+  var tickT1;
+  var outputs;
 
   /*
    * 自愈：如果启动时没读到配置（Initial Actions 里 updateVariable 与 customCode
@@ -1669,21 +1689,53 @@ function xtoysBridgeTick() {
    */
   xthbMoveExpiredToFence(nowMs);
   xthbTrimFence();
+  tickT1 = xthbNowMs();
+  xthbTickCleanMs = xthbTickCleanMs + (tickT1 - tickStartMs);
 
+  /*
+   * 三段分别计时。上一版把"仲裁+推送"合在一起测，得到 37ms 却无法判断
+   * 是"算得慢"还是"写设备慢" —— 所以务必分开。
+   */
   tickT0 = xthbNowMs();
-  xthbPushOutputs(xthbComputeOutputs(nowMs));
-  xthbTickComputeMs = xthbTickComputeMs + (xthbNowMs() - tickT0);
+  outputs = xthbComputeOutputs(nowMs);
+  tickT1 = xthbNowMs();
+  xthbTickComputeMs = xthbTickComputeMs + (tickT1 - tickT0);
+
+  xthbPushOutputs(outputs);
+  tickT0 = xthbNowMs();
+  xthbTickPushMs = xthbTickPushMs + (tickT0 - tickT1);
 
   XTHB_setVariable("xthb-status", "running");
   xthbWriteDiagnostics();
+  xthbTickCleanMs = xthbTickCleanMs + (xthbNowMs() - tickT0);
+
+  /*
+   * 总耗时只累计到诊断写完为止，**统计日志本身不计入**：
+   * 否则日志会把自己算进去，读数偏大。代价是总耗时略小于真实 tick 耗时，
+   * 但差值固定且很小（每 50 个 tick 才一行日志）。
+   */
   xthbTickTotalMs = xthbTickTotalMs + (xthbNowMs() - tickStartMs);
   xthbLogStats();
-  /*
-   * 统计日志本身也要计入下一次的观测范围之外 —— 这里把"统计日志的开销"
-   * 排除在 tick 测量之外是刻意的：否则日志会自己把自己算进去，读数偏大。
-   * 代价是 number 略小于真实 tick 耗时，但差值固定且很小（每 50 tick 一行）。
-   */
   return "tick";
+}
+
+/*
+ * 测量自检：跑一段固定的、已知规模的工作，返回它消耗的毫秒数。
+ *
+ * 用途：如果同一段固定工作在不同统计窗口报出成倍差异，说明计时本身不可信
+ * （时钟被粗化/被钳制，或解释器调度让测量失真），那么任何"耗时归因"都不能采信。
+ * 这段工作刻意只用属性访问与算术，不碰任何状态，保证可重复。
+ */
+function xthbMeasureSanity() {
+  var probe = { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8 };
+  var i;
+  var acc = 0;
+  var t0 = xthbNowMs();
+  for (i = 0; i < XTHB_SANITY_ITERATIONS; i = i + 1) {
+    acc = acc + probe.a + probe.b + probe.c + probe.d +
+      probe.e + probe.f + probe.g + probe.h;
+  }
+  return { ms: xthbNowMs() - t0, acc: acc };
 }
 
 /*
@@ -1696,14 +1748,22 @@ function xtoysBridgeTick() {
  * ⚠️ 计时方式很关键：**按窗口累计，而不是每 tick 各自取差**。
  * `Date.now()` 在本环境只有毫秒分辨率，单 tick 耗时往往不足 1ms，
  * 逐 tick 取差会被全部截断成 0（第一版就是这么错的，读数恒为 0，等于没装仪表）。
- * 现在改为：窗口开始时记下累计计时与该窗口的 tick 序号，
- * 窗口结束时用 (累计差 / 窗口内 tick 数) 得平均值 —— 亚毫秒成本会随窗口累积而显现。
+ * 现在改为：窗口结束时用 (累计差 / 窗口内 tick 数) 得平均值。
+ *
+ * 同时给出三项交叉校验，用于判断测量本身是否可信：
+ *   wall   —— 本窗口的真实墙钟跨度
+ *   total  —— 本窗口累计的 tick 计时之和（与 wall 对照）
+ *   sanity —— 一段固定工作的耗时（与上一窗口对照，差异大即测量不可信）
  */
 function xthbLogStats() {
   var windowTicks;
-  var avgTotal;
-  var avgCompute;
+  var nowMs;
+  var wallMs;
+  var sumMs;
+  var sanity;
+  var sanityNote;
   var line;
+
   if (xthbTicks <= 0 || xthbTicks % XTHB_STATS_INTERVAL_TICKS !== 0) {
     return;
   }
@@ -1711,22 +1771,55 @@ function xthbLogStats() {
   if (windowTicks <= 0) {
     return;
   }
-  avgTotal = (xthbTickTotalMs - xthbStatsWinTotalMs) / windowTicks;
-  avgCompute = (xthbTickComputeMs - xthbStatsWinComputeMs) / windowTicks;
-  xthbStatsWinTick = xthbTicks;
-  xthbStatsWinTotalMs = xthbTickTotalMs;
-  xthbStatsWinComputeMs = xthbTickComputeMs;
+  nowMs = xthbNowMs();
+  wallMs = nowMs - xthbStatsWinWallMs;
+  sumMs = xthbTickTotalMs - xthbStatsWinTotalMs;
+  sanity = xthbMeasureSanity();
+
+  /*
+   * 第一个窗口的墙钟跨度**不可信**：起始点是 0，而启动过程（配置解析、9 个 Block
+   * 构建、Initial Actions）本身可能耗掉很久，于是 wallMs 变成一个巨大的数。
+   * 真机日志里第一个窗口就出现过这种情况，导致"每 tick 1.42ms"这个异常小的读数 ——
+   * 那是被巨大的分母拉低的假象。这里明确标出来，避免有人拿它当基线。
+   */
+  if (xthbStatsWinWallMs <= 0) {
+    wallMs = -1;
+  }
+
+  if (xthbSanityPrevMs < 0) {
+    /* 正常情况下 init 里已预热过；走到这里说明自检从未跑成，按"未知"标注。 */
+    sanityNote = "首次";
+  } else if (sanity.ms <= 0 && xthbSanityPrevMs <= 0) {
+    sanityNote = "0(时钟分辨率不足)";
+  } else if (xthbSanityPrevMs > 0 &&
+    (sanity.ms > xthbSanityPrevMs * 3 || sanity.ms * 3 < xthbSanityPrevMs)) {
+    sanityNote = "⚠️波动大(测量不可信)";
+  } else {
+    sanityNote = "稳定";
+  }
+  xthbSanityPrevMs = sanity.ms;
 
   line = "统计 tick=" + xthbTicks +
-    " 本窗口每tick均值=" + xthbRound2(avgTotal) + "ms" +
-    " 其中仲裁+推送=" + xthbRound2(avgCompute) + "ms" +
-    " 其余(清理/诊断/日志)=" + xthbRound2(avgTotal - avgCompute) + "ms" +
-    " 活跃事件=" + xthbCountOwn(xthbEvents) +
+    " 每tick均值=" + xthbRound2(sumMs / windowTicks) + "ms" +
+    " [仲裁=" + xthbRound2((xthbTickComputeMs - xthbStatsWinComputeMs) / windowTicks) +
+    " 推送=" + xthbRound2((xthbTickPushMs - xthbStatsWinPushMs) / windowTicks) +
+    " 清理诊断=" + xthbRound2((xthbTickCleanMs - xthbStatsWinCleanMs) / windowTicks) + "]ms" +
+    " 窗口墙钟=" + (wallMs < 0 ? "首个窗口不可信" : xthbRound2(wallMs) + "ms") +
+    " 计时和=" + xthbRound2(sumMs) + "ms" +
+    " 自检=" + sanity.ms + "ms(" + sanityNote + ")" +
+    " 活跃=" + xthbCountOwn(xthbEvents) +
     " 栅栏=" + xthbCountFenceEvents() +
     " 残缺=" + xthbCorruptEvents +
     " 被拒=" + xthbRejected +
     " 宿主异常=" + xthbHostErrors;
   xthbLog(line);
+
+  xthbStatsWinTick = xthbTicks;
+  xthbStatsWinTotalMs = xthbTickTotalMs;
+  xthbStatsWinComputeMs = xthbTickComputeMs;
+  xthbStatsWinPushMs = xthbTickPushMs;
+  xthbStatsWinCleanMs = xthbTickCleanMs;
+  xthbStatsWinWallMs = nowMs;
 }
 
 /* 保留两位小数，避免日志里出现一长串浮点尾数。 */
@@ -1758,13 +1851,15 @@ function xthbWriteDiagnostics() {
   xthbSetDiag("xthb-last-error", xthbLastError);
   xthbSetDiag("xthb-last-ignored", xthbLastIgnored);
 
-  /* 每 10 个 tick 刷一次事件计数与计时（这些值每 tick 都在变）。 */
+  /* 每 XTHB_DIAG_INTERVAL_TICKS 个 tick 刷一次事件计数与计时（这些值每 tick 都在变）。 */
   if (xthbTicks % XTHB_DIAG_INTERVAL_TICKS === 0) {
     xthbSetDiag("xthb-tick-count", xthbTicks);
     xthbSetDiag("xthb-active-events", xthbCountOwn(xthbEvents));
     xthbSetDiag("xthb-fence-events", xthbCountFenceEvents());
     xthbSetDiag("xthb-tick-total-ms", xthbTickTotalMs);
     xthbSetDiag("xthb-tick-compute-ms", xthbTickComputeMs);
+    xthbSetDiag("xthb-tick-push-ms", xthbTickPushMs);
+    xthbSetDiag("xthb-tick-clean-ms", xthbTickCleanMs);
   }
 }
 
