@@ -2107,6 +2107,99 @@ test("stop_all 之后即使没有新命令也会推送归零", () => {
     "归零推送完成后不应继续重算");
 });
 
+test("栅栏计数用增量维护，与实际条数始终一致", () => {
+  /*
+   * xthbCountFenceEvents 的调用点每个 tick 都有（统计行 + 诊断变量），
+   * 而栅栏可以几百条 —— 每次 O(n) 遍历在解释器里是实打实的开销，何况只是个数。
+   * 改为增量计数后必须保证不漂移：增删点有五处，任何一处漏同步都会让
+   * "栅栏=N"这个诊断数字骗人。
+   */
+  const host = bootHost();
+  const actual = () => Number(host.call.raw("xthbCountOwn(xthbEventFence)"));
+  const reported = () => Number(host.call.raw("xthbFenceCount"));
+
+  /* 造一批短事件 → 到期搬进栅栏 */
+  attackBurst(host, 1, 20);
+  host.testDate.current += 700;
+  host.call.tick();
+  assertEqual(actual(), 20, "应有 20 条栅栏");
+  assertEqual(reported(), actual(), "计数器应与实际条数一致（搬迁后）");
+
+  /* stop_all 不清栅栏，计数应保持 */
+  host.call.handle(envelope({ protocolVersion: 1, command: "stop_all", source: "rpt" }));
+  assertEqual(reported(), actual(), "stop_all 后仍应一致");
+
+  /* 发更大的 sequence → 触发 delete xthbEventFence（占位释放） */
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "rpt", eventId: "rpt-nipple-a1-p0", sequence: 2,
+    targets: [{ part: "nipple", estimIntensity: 30, durationMs: 300 }],
+  }));
+  assertEqual(reported(), actual(), "释放栅栏占位后仍应一致");
+
+  /* 让它也到期搬进栅栏，再越过保留期 → 清理路径 */
+  host.testDate.current += 700;
+  host.call.tick();
+  assertEqual(reported(), actual(), "第二个事件到期后仍应一致");
+  host.testDate.current += 700000;
+  host.call.tick();
+  assertEqual(actual(), 0, "超过保留期后栅栏应清空");
+  assertEqual(reported(), 0, "计数器应同步归零");
+});
+
+test("ramp 与频率未变时不重写变量（宿主调用是最贵的动作）", () => {
+  /*
+   * 真机实测：全 4 部位扇出时一次推送要 22 次 setVariable —— 每个通道写
+   * 音量 + ramp + 频率。而 ramp 与频率在同一次攻击里几乎不变，重写纯属浪费。
+   * 输出 Job 每次 start 都会重新读变量，所以"值没变就不写"是安全的。
+   */
+  const host = bootHost();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "g", eventId: "e1", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 40, frequency: 30, rampUpMs: 100, durationMs: 60000 }],
+  }));
+  host.call.tick();
+  const afterFirst = host.state.variableLog.length;
+
+  /* 新事件：强度变了，但 ramp 与频率相同 → 只应重写音量。 */
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "g", eventId: "e2", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 60, frequency: 30, rampUpMs: 100, durationMs: 60000 }],
+  }));
+  host.call.tick();
+  const writes = host.state.variableLog.slice(afterFirst)
+    .filter((c) => c.name.indexOf("xthb-estim-nipple") === 0);
+  assertEqual(writes.length, 1, `ramp/频率未变时应只写音量，实际写了 ${writes.length} 次：` +
+    writes.map((w) => w.name).join(", "));
+  assertEqual(host.V("xthb-estim-nipple-volume"), 60, "音量仍应更新");
+});
+
+test("ramp 或频率真的变化时必须重写（去重不得漏写）", () => {
+  const host = bootHost();
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "g", eventId: "e1", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 40, frequency: 30, rampUpMs: 100, durationMs: 60000 }],
+  }));
+  host.call.tick();
+  assertEqual(host.V("xthb-estim-nipple-frequency"), 30, "频率应为 30");
+  assertEqual(host.V("xthb-estim-nipple-ramp-seconds"), 0.1, "ramp 应为 0.1s");
+
+  /* 频率变 → 必须写 */
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "g", eventId: "e2", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 40, frequency: 80, rampUpMs: 100, durationMs: 60000 }],
+  }));
+  host.call.tick();
+  assertEqual(host.V("xthb-estim-nipple-frequency"), 80, "频率变化必须写进去");
+
+  /* ramp 变 → 必须写 */
+  host.call.handle(envelope({
+    protocolVersion: 1, command: "play", source: "g", eventId: "e3", sequence: 1,
+    targets: [{ part: "nipple", estimIntensity: 40, frequency: 80, rampUpMs: 900, durationMs: 60000 }],
+  }));
+  host.call.tick();
+  assertEqual(host.V("xthb-estim-nipple-ramp-seconds"), 0.9, "ramp 变化必须写进去");
+});
+
 /* ============================================================== 汇总 */
 
 console.log(`\n${"-".repeat(64)}`);

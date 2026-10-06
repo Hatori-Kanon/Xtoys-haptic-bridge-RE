@@ -149,6 +149,8 @@ var xthbEvents = {};
  * 栅栏只需要在【收到同一个 source+eventId 时】查表，不必进热路径。
  */
 var xthbEventFence = {};
+/* 栅栏条目数，增量维护（见 xthbCountFenceEvents）。 */
+var xthbFenceCount = 0;
 /* 基线快照：source -> { sequence, parts }。 */
 var xthbBaselines = {};
 /* 每个 source 的基线序号栅栏（stop_all 清状态但保留它）。 */
@@ -995,6 +997,7 @@ function xthbApplyPlay(source, eventId, sequence, parts, finishAtMs, partFinishA
   /* 更高的 sequence 到达 → 旧栅栏条目使命结束，可以让位。 */
   if (fence !== null) {
     delete xthbEventFence[key];
+    xthbFenceCount = xthbFenceCount - 1;
   }
   xthbTrimFence();
   xthbMarkDirty();
@@ -1541,6 +1544,8 @@ function xthbPushOutputs(outs) {
   var index;
   var out;
   var force = xthbForcePush;
+  var last;
+  var recordedFreq;
 
   xthbForcePush = false;
 
@@ -1552,15 +1557,28 @@ function xthbPushOutputs(outs) {
     /*
      * 音量只在"这次确实有音量意图"时写。频率-only 的意图不碰音量变量，
      * 否则会把正在输出的强度拽到 0。
+     *
+     * ⚠️ ramp 秒数与频率**只在真的变化时才写**（2026-10-07 性能改造）。
+     * 真机实测：全 4 部位扇出时一次推送要 22 次 setVariable —— 每个通道写
+     * 音量 + ramp + 频率。而 ramp 与频率在同一次攻击里几乎不变，
+     * 每次重写就是纯浪费（宿主调用在解释器里是最贵的动作）。
+     * 输出 Job 每次 start 都会重新读变量，所以"值没变就不写"是安全的。
      */
     if (out.valueDriven) {
+      last = xthbHasOwn(xthbWritten, out.channel) ? xthbWritten[out.channel] : null;
       XTHB_setVariable(out.block.volumeVar, out.value);
-      XTHB_setVariable(out.block.rampVar, out.rampSeconds);
+      if (last === null || last.rampSeconds !== out.rampSeconds) {
+        XTHB_setVariable(out.block.rampVar, out.rampSeconds);
+      }
     }
     if (out.block.frequencyVar !== null) {
       /* null → 哨兵值：明确表示"本次不动频率"。 */
-      XTHB_setVariable(out.block.frequencyVar,
-        out.frequency === null ? xthbConfig.frequencySentinel : out.frequency);
+      recordedFreq = xthbRecordedFrequency(out);
+      last = xthbHasOwn(xthbWritten, out.channel) ? xthbWritten[out.channel] : null;
+      if (last === null || last.frequency !== recordedFreq) {
+        XTHB_setVariable(out.block.frequencyVar,
+          out.frequency === null ? xthbConfig.frequencySentinel : out.frequency);
+      }
     }
     if (out.block.directionVar !== null) {
       XTHB_setVariable(out.block.directionVar, out.direction);
@@ -1661,6 +1679,7 @@ function xtoysBridgeInit(injectedConfig) {
 
   xthbEvents = {};
   xthbEventFence = {};
+  xthbFenceCount = 0;
   xthbBaselines = {};
   xthbBaselineSeq = {};
   xthbWritten = {};
@@ -2051,6 +2070,7 @@ function xthbMoveExpiredToFence(nowMs) {
         finishAtMs: event.finishAtMs,
         expiredAtMs: nowMs
       };
+      xthbFenceCount = xthbFenceCount + 1;
       delete xthbEvents[key];
       xthbExpiredToFence = xthbExpiredToFence + 1;
       moved = moved + 1;
@@ -2135,9 +2155,16 @@ function xthbRecomputeNextExpiry(nowMs) {
   xthbNextExpiryMs = best;
 }
 
-/* 栅栏表条目数（含已过期但仍需防重放的）。 */
+/*
+ * 栅栏表条目数。
+ *
+ * ⚠️ 用**增量维护的计数器**，不每次遍历统计。
+ * 调用点每个 tick 都有（统计行 + 诊断变量），而栅栏可以有几百条；
+ * 每次 O(n) 在解释器里是实打实的开销，而且它只是个数。
+ * 修复前真机实测：栅栏 210 条时，每个 tick 要为此遍历两遍。
+ */
 function xthbCountFenceEvents() {
-  return xthbCountOwn(xthbEventFence);
+  return xthbFenceCount;
 }
 
 /*
@@ -2167,13 +2194,19 @@ function xthbTrimFence() {
     entry = xthbEventFence[key];
     if (!entry || typeof entry.sequence !== "number") {
       delete xthbEventFence[key];
+      xthbFenceCount = xthbFenceCount - 1;
       continue;
     }
     if (nowMs - entry.expiredAtMs > XTHB_EXPIRED_EVENT_KEEP_MS) {
       delete xthbEventFence[key];
+      xthbFenceCount = xthbFenceCount - 1;
       continue;
     }
     total = total + 1;
+  }
+  /* 计数器与实际条数对账（正常应始终相等；不等说明某处漏同步）。 */
+  if (total !== xthbFenceCount) {
+    xthbFenceCount = total;
   }
   if (total >= XTHB_MAX_FENCE_EVENTS) {
     xthbEvictOldestFence(nowMs);
@@ -2186,7 +2219,7 @@ function xthbEvictOldestFence(nowMs) {
   var oldestAt = Infinity;
   var key;
   var entry;
-  var surplus = xthbCountOwn(xthbEventFence) - XTHB_MAX_FENCE_EVENTS + 1;
+  var surplus = xthbFenceCount - XTHB_MAX_FENCE_EVENTS + 1;
 
   while (surplus > 0) {
     oldestKey = null;
@@ -2205,6 +2238,7 @@ function xthbEvictOldestFence(nowMs) {
       return;
     }
     delete xthbEventFence[oldestKey];
+    xthbFenceCount = xthbFenceCount - 1;
     surplus = surplus - 1;
   }
 }
