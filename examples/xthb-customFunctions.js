@@ -1128,41 +1128,44 @@ function xthbMetricValue(intent, metric) {
  * durationMs 定义在 target 上）。早期实现把整个事件按 max(durationMs) 过期，
  * 会让 200ms 的一击持续输出 5 秒。
  */
+
+
 /*
- * 候选收集缓存（每个 tick 内有效）。
+ * 仲裁：三级比较 priority → 数值 → sequence（docs/03 §5）。
  *
- * 同一个 (part, metric) 在一次 tick 里会被问两次 —— 一次为音量、一次为频率
- * （estim Block 的 frequency 维度独立仲裁）。真机上出现过
- * "JavaScript did not finish running in allotted time"，而 JS-Interpreter 里
- * 每次收集都要遍历基线与事件表，所以这里按 (part, metric) 记住结果。
+ * ⚠️ 刻意**不构造候选对象、不构造候选数组**（2026-10-07 性能改造）。
+ * 原实现为每个候选分配一个 6 属性对象、再 push 进数组、最后线性挑最大的一个 ——
+ * 那些对象除了挑最大值之外没有任何用处。真机实测每 tick 要跑 9 次仲裁
+ * （9 个 Block；estim 还有频率维度），而每次都要遍历活跃事件与基线表。
+ * 在 JS-Interpreter 里对象分配与属性访问的常数因子很大，所以这里改成
+ * **边遍历边保留最优者的原始字段**（局部变量 = 解释器的局部槽位，不需要分配），
+ * 只在最后把胜出者组装成一个对象返回。
+ *
+ * 语义完全不变：比较顺序、driveId 并列定序、每个部位各自的到期判定都保持原样。
+ * driveId 也改成**只在胜出时才拼接字符串**（原本每个候选都拼一次）
+ * —— driveId 只在"推送判据"和"并列定序"两处用到。
  */
-var xthbCandidateCache = null;
+function xthbArbitrate(part, metric, nowMs) {
+  var best = null;          /* 胜出者：{value,priority,sequence,driveId,source,intent} */
+  var bestValue = 0;
+  var bestPriority = 0;
+  var bestSequence = 0;
+  var bestDriveId = "";
+  var bestSource = "";
+  var bestIntent = null;
 
-function xthbResetCandidateCache() {
-  xthbCandidateCache = {};
-}
-
-function xthbCollectCandidates(part, metric, nowMs) {
-  var key = part + "\u0000" + metric;
-  if (xthbCandidateCache !== null && xthbHasOwn(xthbCandidateCache, key)) {
-    return xthbCandidateCache[key];
-  }
-  var candidates = xthbCollectCandidatesUncached(part, metric, nowMs);
-  if (xthbCandidateCache !== null) {
-    xthbCandidateCache[key] = candidates;
-  }
-  return candidates;
-}
-
-function xthbCollectCandidatesUncached(part, metric, nowMs) {
-  var candidates = [];
   var source;
   var key;
   var event;
   var intent;
   var value;
   var finishAt;
+  var priority;
+  var sequence;
+  var driveId;
+  var better;
 
+  /* ---- 基线候选 ---- */
   for (source in xthbBaselines) {
     if (!xthbHasOwn(xthbBaselines, source)) {
       continue;
@@ -1175,16 +1178,35 @@ function xthbCollectCandidatesUncached(part, metric, nowMs) {
     if (value === null) {
       continue;
     }
-    candidates.push({
-      value: value,
-      priority: xthbIntentPriority(intent),
-      sequence: xthbBaselines[source].sequence,
-      driveId: source + "\u0000\u0000" + xthbBaselines[source].sequence,
-      source: source,
-      intent: intent
-    });
+    priority = xthbIntentPriority(intent);
+    sequence = xthbBaselines[source].sequence;
+    /* 三级比较（与 xthbPickBetter 等价，内联以避免 per-candidate 函数调用）。 */
+    better = false;
+    if (best === null) {
+      better = true;
+    } else if (priority !== bestPriority) {
+      better = priority > bestPriority;
+    } else if (value !== bestValue) {
+      better = value > bestValue;
+    } else if (sequence !== bestSequence) {
+      better = sequence > bestSequence;
+    } else {
+      /* 完全并列时按 driveId 定序，保证结果确定。 */
+      driveId = source + "\u0000\u0000" + sequence;
+      better = driveId > bestDriveId;
+    }
+    if (better) {
+      best = true;
+      bestValue = value;
+      bestPriority = priority;
+      bestSequence = sequence;
+      bestSource = source;
+      bestIntent = intent;
+      bestDriveId = source + "\u0000\u0000" + sequence;
+    }
   }
 
+  /* ---- 活跃事件候选 ---- */
   for (key in xthbEvents) {
     if (!xthbHasOwn(xthbEvents, key)) {
       continue;
@@ -1211,46 +1233,43 @@ function xthbCollectCandidatesUncached(part, metric, nowMs) {
     if (value === null) {
       continue;
     }
-    candidates.push({
-      value: value,
-      priority: xthbIntentPriority(intent),
-      sequence: event.sequence,
-      driveId: event.source + "\u0000" + event.eventId + "\u0000" + event.sequence,
-      source: event.source,
-      intent: intent
-    });
-  }
-  return candidates;
-}
-
-/* 三级比较：priority → 数值 → sequence（docs/03 §5）。 */
-function xthbPickBetter(candidate, incumbent) {
-  if (incumbent === null) {
-    return true;
-  }
-  if (candidate.priority !== incumbent.priority) {
-    return candidate.priority > incumbent.priority;
-  }
-  if (candidate.value !== incumbent.value) {
-    return candidate.value > incumbent.value;
-  }
-  if (candidate.sequence !== incumbent.sequence) {
-    return candidate.sequence > incumbent.sequence;
-  }
-  /* 完全并列时按 driveId 定序，保证结果确定。 */
-  return candidate.driveId > incumbent.driveId;
-}
-
-function xthbArbitrate(part, metric, nowMs) {
-  var candidates = xthbCollectCandidates(part, metric, nowMs);
-  var winner = null;
-  var index;
-  for (index = 0; index < candidates.length; index = index + 1) {
-    if (xthbPickBetter(candidates[index], winner)) {
-      winner = candidates[index];
+    priority = xthbIntentPriority(intent);
+    sequence = event.sequence;
+    better = false;
+    if (best === null) {
+      better = true;
+    } else if (priority !== bestPriority) {
+      better = priority > bestPriority;
+    } else if (value !== bestValue) {
+      better = value > bestValue;
+    } else if (sequence !== bestSequence) {
+      better = sequence > bestSequence;
+    } else {
+      driveId = event.source + "\u0000" + event.eventId + "\u0000" + sequence;
+      better = driveId > bestDriveId;
+    }
+    if (better) {
+      best = true;
+      bestValue = value;
+      bestPriority = priority;
+      bestSequence = sequence;
+      bestSource = event.source;
+      bestIntent = intent;
+      bestDriveId = event.source + "\u0000" + event.eventId + "\u0000" + sequence;
     }
   }
-  return winner;
+
+  if (best === null) {
+    return null;
+  }
+  return {
+    value: bestValue,
+    priority: bestPriority,
+    sequence: bestSequence,
+    driveId: bestDriveId,
+    source: bestSource,
+    intent: bestIntent
+  };
 }
 
 /*
@@ -1682,7 +1701,6 @@ function xtoysBridgeTick() {
   nowMs = xthbNowMs();
   tickStartMs = nowMs;
   xthbTicks = xthbTicks + 1;
-  xthbResetCandidateCache();
 
   /*
    * 到期处理：
@@ -2321,8 +2339,6 @@ function xthbExecute(parsed) {
      * 最后才写状态：推送过程即使抛异常（宿主调用已被包住），
      * 也不会出现"状态说停了、实际还在输出"。
      */
-    /* 状态刚被清空，缓存必须失效，否则会按清空前的候选算出输出。 */
-    xthbResetCandidateCache();
     xthbForcePush = true;
     xthbPushOutputs(xthbComputeOutputs(nowMs = xthbNowMs()));
     XTHB_setVariable("xthb-status", "stopped_all");
@@ -2381,7 +2397,6 @@ function xtoysBridgeStopAll() {
     return "stopped";
   }
   xthbWriteZerosAndRecord();
-  xthbResetCandidateCache();
   xthbForcePush = true;
   xthbPushOutputs(xthbComputeOutputs(xthbNowMs()));
   XTHB_setVariable("xthb-status", "stopped");
