@@ -32,8 +32,17 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
 
 const RUNTIME_SRC = join(ROOT, "src", "xtoys-bridge.js");
-const OUT_JSON = join(ROOT, "examples", "xtoys-minimal-3path.json");
-const OUT_JS = join(ROOT, "examples", "xthb-customFunctions.js");
+/*
+ * 判别实验（XTHB_TICK_SECONDS）产出**独立文件**，绝不覆盖正式产物 ——
+ * 否则测完很容易忘了自己导入的是哪个版本，而两者行为不同。
+ */
+const IS_EXPERIMENT = Boolean(process.env.XTHB_TICK_SECONDS);
+const OUT_JSON = IS_EXPERIMENT
+  ? join(ROOT, "examples", `xtoys-experiment-tick${SCHEDULER_INTERVAL_SECONDS}s.json`)
+  : join(ROOT, "examples", "xtoys-minimal-3path.json");
+const OUT_JS = IS_EXPERIMENT
+  ? join(ROOT, "examples", "xthb-customFunctions-experiment.js")
+  : join(ROOT, "examples", "xthb-customFunctions.js");
 
 const BLOCKS = buildBlocks();
 const BRIDGE_CONFIG = buildBridgeConfig();
